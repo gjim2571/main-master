@@ -5,6 +5,7 @@ import { useWallet } from '@/hooks/useWallet';
 import { Button } from '@/components/ui/button';
 import {
   GameState,
+  GameAssets,
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
   createInitialGameState,
@@ -18,7 +19,7 @@ import {
   drawStartScreen,
   drawGameOver,
 } from '@/lib/gameEngine';
-import { Wallet, Unplug, RotateCcw, Trophy, Zap, Info } from 'lucide-react';
+import { Wallet, Unplug, RotateCcw, Trophy, Zap, Info, Image as ImageIcon } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -30,6 +31,8 @@ export default function RitualGame() {
   const lastTimeRef = useRef<number>(0);
   const gamePhaseRef = useRef<'start' | 'playing' | 'gameover'>('start');
   const cleanupRef = useRef<(() => void) | null>(null);
+  const assetsRef = useRef<GameAssets>({ characterImg: null, ritualLogoImg: null });
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [gamePhase, setGamePhase] = useState<'start' | 'playing' | 'gameover'>('start');
   const [displayScore, setDisplayScore] = useState(0);
   const [displayDistance, setDisplayDistance] = useState(0);
@@ -38,6 +41,30 @@ export default function RitualGame() {
   const [showRules, setShowRules] = useState(false);
 
   const { wallet, connect, disconnect, switchToRitual } = useWallet();
+
+  // Preload game images
+  useEffect(() => {
+    const charImg = new Image();
+    charImg.crossOrigin = 'anonymous';
+    charImg.src = '/character-art.jpeg';
+    charImg.onload = () => {
+      assetsRef.current.characterImg = charImg;
+      setAssetsLoaded(true);
+    };
+    charImg.onerror = () => {
+      setAssetsLoaded(true); // Continue without image
+    };
+
+    const logoImg = new Image();
+    logoImg.crossOrigin = 'anonymous';
+    logoImg.src = '/ritual-logo-art.jpeg';
+    logoImg.onload = () => {
+      assetsRef.current.ritualLogoImg = logoImg;
+    };
+    logoImg.onerror = () => {
+      // Continue without image
+    };
+  }, []);
 
   // Load high scores from localStorage
   useEffect(() => {
@@ -124,15 +151,16 @@ export default function RitualGame() {
       // Draw
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
+      const assets = assetsRef.current;
       if (gamePhaseRef.current === 'start') {
         // Draw a preview of the level behind the start screen
-        drawGame(ctx, state, timestamp);
-        drawStartScreen(ctx, timestamp, wallet.address);
+        drawGame(ctx, state, timestamp, assets);
+        drawStartScreen(ctx, timestamp, wallet.address, assets);
       } else if (gamePhaseRef.current === 'playing') {
-        drawGame(ctx, state, timestamp);
+        drawGame(ctx, state, timestamp, assets);
         drawHUD(ctx, state, wallet.address, wallet.balance);
       } else if (gamePhaseRef.current === 'gameover') {
-        drawGame(ctx, state, timestamp);
+        drawGame(ctx, state, timestamp, assets);
         drawGameOver(ctx, state, timestamp, wallet.address);
       }
 
@@ -187,8 +215,8 @@ export default function RitualGame() {
       {/* Header */}
       <header className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#00ffaa] to-[#00e5ff] flex items-center justify-center">
-            <Zap className="w-5 h-5 text-[#0a0a1a]" />
+          <div className="w-10 h-10 rounded-lg overflow-hidden border border-[#00ffaa]/30 shadow-[0_0_10px_rgba(0,255,170,0.2)]">
+            <img src="/ritual-logo-art.jpeg" alt="Ritual Logo" className="w-full h-full object-cover" />
           </div>
           <div>
             <h1 className="text-lg font-bold text-[#00ffaa] font-mono tracking-wider">RITUAL RUNNER</h1>
@@ -322,6 +350,26 @@ export default function RitualGame() {
 
         {/* Sidebar - Leaderboard & Info */}
         <div className="w-full lg:w-72 flex flex-col gap-3">
+          {/* Character & Art showcase */}
+          <Card className="bg-[#0f0f2f] border-[#00ffaa]/15 overflow-hidden">
+            <CardContent className="p-0">
+              <div className="flex">
+                <div className="w-1/2 aspect-square overflow-hidden">
+                  <img src="/character-art.jpeg" alt="Character Art" className="w-full h-full object-cover" />
+                </div>
+                <div className="w-1/2 aspect-square overflow-hidden border-l border-[#00ffaa]/10">
+                  <img src="/ritual-logo-art.jpeg" alt="Ritual Art" className="w-full h-full object-cover" />
+                </div>
+              </div>
+              <div className="px-3 py-2 flex items-center justify-between">
+                <span className="text-[10px] font-mono text-white/30">Game Assets</span>
+                <span className="text-[10px] font-mono text-[#00ffaa]/50">
+                  {assetsLoaded ? 'Loaded' : 'Loading...'}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Network Info */}
           <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
             <CardHeader className="pb-2 pt-3 px-4">

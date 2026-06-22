@@ -75,6 +75,21 @@ export interface Particle {
   size: number;
 }
 
+export interface FloatingArt {
+  x: number;
+  y: number;
+  size: number;
+  alpha: number;
+  speed: number;
+  bobOffset: number;
+  rotationSpeed: number;
+}
+
+export interface GameAssets {
+  characterImg: HTMLImageElement | null;
+  ritualLogoImg: HTMLImageElement | null;
+}
+
 export interface GameState {
   player: Player;
   platforms: Platform[];
@@ -90,6 +105,7 @@ export interface GameState {
   isPaused: boolean;
   backgroundOffset: number;
   stars: Array<{ x: number; y: number; size: number; brightness: number; speed: number }>;
+  floatingArts: FloatingArt[];
   // Blockchain state
   onChainScoreSubmitted: boolean;
   pendingSubmission: boolean;
@@ -150,6 +166,22 @@ function createStars(count: number) {
   return stars;
 }
 
+function createFloatingArts(count: number) {
+  const arts: FloatingArt[] = [];
+  for (let i = 0; i < count; i++) {
+    arts.push({
+      x: 500 + Math.random() * (LEVEL_WIDTH - 1000),
+      y: 50 + Math.random() * (CANVAS_HEIGHT - 200),
+      size: 30 + Math.random() * 50,
+      alpha: 0.1 + Math.random() * 0.15,
+      speed: 0.2 + Math.random() * 0.3,
+      bobOffset: Math.random() * Math.PI * 2,
+      rotationSpeed: (Math.random() - 0.5) * 0.002,
+    });
+  }
+  return arts;
+}
+
 export function createInitialGameState(): GameState {
   return {
     player: {
@@ -181,6 +213,7 @@ export function createInitialGameState(): GameState {
     isPaused: false,
     backgroundOffset: 0,
     stars: createStars(200),
+    floatingArts: createFloatingArts(8),
     onChainScoreSubmitted: false,
     pendingSubmission: false,
     lastBlockHash: '',

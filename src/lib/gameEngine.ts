@@ -1,5 +1,6 @@
 import {
   GameState,
+  GameAssets,
   Player,
   Platform,
   Coin,
@@ -249,7 +250,7 @@ function updateParticles(particles: Particle[], dt: number) {
 
 // === Drawing ===
 
-export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: number) {
+export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: number, assets?: GameAssets) {
   const { camera, player, platforms, coins, enemies, particles } = state;
 
   // Clear
@@ -403,6 +404,9 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
     ctx.shadowBlur = 0;
   }
 
+  // === Draw Floating Ritual Logo Arts ===
+  drawFloatingArts(ctx, state, time, assets.ritualLogoImg);
+
   // === Draw Player ===
   if (player.isAlive) {
     const px = player.x;
@@ -418,28 +422,52 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
       ctx.fill();
     }
 
-    // Glow
-    ctx.shadowColor = COLORS.playerGlow;
-    ctx.shadowBlur = 12;
+    if (assets.characterImg && assets.characterImg.complete) {
+      // Draw character art as player sprite
+      ctx.save();
+      ctx.shadowColor = COLORS.playerGlow;
+      ctx.shadowBlur = 15;
 
-    // Player body
-    ctx.fillStyle = COLORS.player;
-    ctx.beginPath();
-    ctx.roundRect(px, py, pw, ph, 5);
-    ctx.fill();
+      // Flip if facing left
+      if (player.facing === 'left') {
+        ctx.translate(px + pw / 2, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(assets.characterImg, -pw / 2, py - 4, pw + 8, ph + 8);
+      } else {
+        ctx.drawImage(assets.characterImg, px - 4, py - 4, pw + 8, ph + 8);
+      }
 
-    // Face details
-    const faceDir = player.facing === 'right' ? 1 : -1;
-    // Eye
-    ctx.fillStyle = '#0a0a2e';
-    ctx.beginPath();
-    ctx.arc(px + pw / 2 + faceDir * 4, py + 10, 3, 0, Math.PI * 2);
-    ctx.fill();
-    // Eye shine
-    ctx.fillStyle = '#ffffff';
-    ctx.beginPath();
-    ctx.arc(px + pw / 2 + faceDir * 5, py + 9, 1, 0, Math.PI * 2);
-    ctx.fill();
+      // Green lightning glow aura around character
+      const pulseAlpha = 0.15 + 0.1 * Math.sin(time / 300);
+ ctx.shadowColor = COLORS.neonGreen;
+      ctx.shadowBlur = 20;
+      ctx.strokeStyle = `rgba(0, 255, 170, ${pulseAlpha})`;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(px - 5, py - 6, pw + 10, ph + 12, 8);
+      ctx.stroke();
+
+      ctx.restore();
+    } else {
+      // Fallback: geometric player body
+      ctx.shadowColor = COLORS.playerGlow;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = COLORS.player;
+      ctx.beginPath();
+      ctx.roundRect(px, py, pw, ph, 5);
+      ctx.fill();
+
+      const faceDir = player.facing === 'right' ? 1 : -1;
+      ctx.fillStyle = '#0a0a2e';
+      ctx.beginPath();
+      ctx.arc(px + pw / 2 + faceDir * 4, py + 10, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.arc(px + pw / 2 + faceDir * 5, py + 9, 1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
 
     // Legs animation
     if (player.onGround && Math.abs(player.vx) > 0.5) {
@@ -457,7 +485,6 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
     if (!player.onGround) {
       ctx.fillStyle = COLORS.neonBlue;
       ctx.fillRect(px + pw / 2 - 4, py + ph + 2, 8, 4);
-      // Flame
       const flameLen = 6 + Math.random() * 6;
       ctx.fillStyle = COLORS.neonYellow;
       ctx.beginPath();
@@ -483,6 +510,25 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
   ctx.globalAlpha = 1;
 
   ctx.restore();
+}
+
+function drawFloatingArts(ctx: CanvasRenderingContext2D, state: GameState, time: number, logoImg: HTMLImageElement | null) {
+  if (!logoImg || !logoImg.complete) return;
+
+  for (const art of state.floatingArts) {
+    const sx = art.x - state.camera.x;
+    // Only draw if visible
+    if (sx < -100 || sx > CANVAS_WIDTH + 100) continue;
+
+    const bobY = art.y + Math.sin(time / 1500 + art.bobOffset) * 10;
+
+    ctx.save();
+    ctx.globalAlpha = art.alpha;
+    ctx.translate(sx, bobY);
+    ctx.rotate(time * art.rotationSpeed);
+    ctx.drawImage(logoImg, -art.size / 2, -art.size / 2, art.size, art.size);
+    ctx.restore();
+  }
 }
 
 function drawCityscape(ctx: CanvasRenderingContext2D, state: GameState) {
@@ -623,70 +669,136 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 // Draw start screen overlay
-export function drawStartScreen(ctx: CanvasRenderingContext2D, time: number, walletAddress: string | null) {
+export function drawStartScreen(ctx: CanvasRenderingContext2D, time: number, walletAddress: string | null, assets?: GameAssets) {
   ctx.fillStyle = 'rgba(10, 10, 30, 0.85)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-  // Title
   ctx.textAlign = 'center';
 
-  // Glow title
+  // Draw character art on the left side
+  if (assets?.characterImg && assets.characterImg.complete) {
+    ctx.save();
+    const charX = CANVAS_WIDTH / 2 - 200;
+    const charY = 230;
+    const charW = 140;
+    const charH = 180;
+
+    // Glow behind character
+    ctx.shadowColor = COLORS.neonGreen;
+    ctx.shadowBlur = 30;
+    ctx.fillStyle = 'rgba(0, 255, 170, 0.05)';
+    ctx.beginPath();
+    ctx.arc(charX + charW / 2, charY + charH / 2, charW / 2 + 10, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+
+    // Character image with pulsing glow
+    const pulse = 0.9 + 0.1 * Math.sin(time / 600);
+    ctx.save();
+    ctx.translate(charX + charW / 2, charY + charH / 2);
+    ctx.scale(pulse, pulse);
+    ctx.drawImage(assets.characterImg, -charW / 2, -charH / 2, charW, charH);
+
+    // Neon border
+    ctx.strokeStyle = `rgba(0, 255, 170, ${0.3 + 0.2 * Math.sin(time / 400)})`;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = COLORS.neonGreen;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.roundRect(-charW / 2 - 3, -charH / 2 - 3, charW + 6, charH + 6, 10);
+    ctx.stroke();
+    ctx.restore();
+    ctx.restore();
+  }
+
+  // Draw ritual logo art on the right side
+  if (assets?.ritualLogoImg && assets.ritualLogoImg.complete) {
+    ctx.save();
+    const logoX = CANVAS_WIDTH / 2 + 60;
+    const logoY = 230;
+    const logoSize = 130;
+
+    ctx.globalAlpha = 0.7 + 0.15 * Math.sin(time / 800);
+    const logoPulse = 1 + 0.05 * Math.sin(time / 500);
+    ctx.translate(logoX + logoSize / 2, logoY + logoSize / 2);
+    ctx.rotate(time * 0.0005);
+    ctx.scale(logoPulse, logoPulse);
+    ctx.drawImage(assets.ritualLogoImg, -logoSize / 2, -logoSize / 2, logoSize, logoSize);
+
+    // Green glow ring
+    ctx.strokeStyle = `rgba(0, 255, 170, ${0.2 + 0.15 * Math.sin(time / 400)})`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = COLORS.neonGreen;
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(0, 0, logoSize / 2 + 8, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  // Title
   ctx.shadowColor = COLORS.neonGreen;
   ctx.shadowBlur = 20;
   ctx.fillStyle = COLORS.neonGreen;
-  ctx.font = 'bold 48px monospace';
-  ctx.fillText('RITUAL RUNNER', CANVAS_WIDTH / 2, 160);
+  ctx.font = 'bold 44px monospace';
+  ctx.fillText('RITUAL RUNNER', CANVAS_WIDTH / 2, 80);
   ctx.shadowBlur = 0;
 
   // Subtitle
   ctx.fillStyle = COLORS.neonPink;
-  ctx.font = '16px monospace';
-  ctx.fillText('Blockchain Platform Game on Ritual Testnet', CANVAS_WIDTH / 2, 195);
+  ctx.font = '15px monospace';
+  ctx.fillText('Blockchain Platform Game on Ritual Testnet', CANVAS_WIDTH / 2, 110);
 
   // Chain decoration line
   ctx.strokeStyle = COLORS.neonGreen;
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
   ctx.beginPath();
-  ctx.moveTo(CANVAS_WIDTH / 2 - 150, 210);
-  ctx.lineTo(CANVAS_WIDTH / 2 + 150, 210);
+  ctx.moveTo(CANVAS_WIDTH / 2 - 180, 125);
+  ctx.lineTo(CANVAS_WIDTH / 2 + 180, 125);
   ctx.stroke();
   ctx.setLineDash([]);
 
+  // Description text
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+  ctx.font = '12px monospace';
+  ctx.fillText('Your custom character & Ritual blockchain art integrated!', CANVAS_WIDTH / 2, 150);
+
   // Instructions
   ctx.fillStyle = COLORS.text;
-  ctx.font = '14px monospace';
+  ctx.font = '13px monospace';
   const instructions = [
-    'A / D  or  Arrow Keys  →  Move',
-    'W / Space  →  Jump  (Double Jump!)',
+    'A / D  or  Arrow Keys  \u2192  Move',
+    'W / Space  \u2192  Jump  (Double Jump!)',
     'Collect coins & defeat enemies',
     'Reach the end to submit score on-chain',
   ];
 
   instructions.forEach((text, i) => {
     ctx.fillStyle = i === 3 ? COLORS.neonYellow : 'rgba(255,255,255,0.7)';
-    ctx.fillText(text, CANVAS_WIDTH / 2, 260 + i * 28);
+    ctx.fillText(text, CANVAS_WIDTH / 2, 420 + i * 22);
   });
 
   // Wallet status
   if (!walletAddress) {
     ctx.fillStyle = COLORS.neonPink;
-    ctx.font = '13px monospace';
-    ctx.fillText('Connect MetaMask Wallet to submit scores on-chain', CANVAS_WIDTH / 2, 400);
+    ctx.font = '12px monospace';
+    ctx.fillText('Connect MetaMask Wallet to submit scores on-chain', CANVAS_WIDTH / 2, 510);
   } else {
     ctx.fillStyle = COLORS.neonGreen;
-    ctx.font = '13px monospace';
-    ctx.fillText('Wallet Connected ✓', CANVAS_WIDTH / 2, 395);
+    ctx.font = '12px monospace';
+    ctx.fillText('Wallet Connected \u2713', CANVAS_WIDTH / 2, 510);
   }
 
   // Start button
   const pulse = 0.9 + 0.1 * Math.sin(time / 400);
   ctx.save();
-  ctx.translate(CANVAS_WIDTH / 2, 450);
+  ctx.translate(CANVAS_WIDTH / 2, CANVAS_HEIGHT - 20);
   ctx.scale(pulse, pulse);
 
   ctx.fillStyle = COLORS.neonGreen;
-  ctx.font = 'bold 20px monospace';
+  ctx.font = 'bold 18px monospace';
   ctx.shadowColor = COLORS.neonGreen;
   ctx.shadowBlur = 15;
   ctx.fillText('Press ENTER or SPACE to Start', 0, 0);
