@@ -1,8 +1,6 @@
 import {
   GameState,
   GameAssets,
-  Platform,
-  Particle,
   CANVAS_WIDTH,
   CANVAS_HEIGHT,
   GRAVITY,
@@ -14,18 +12,25 @@ import {
   spawnParticles,
 } from './gameTypes';
 
-// Shared input state
+// Shared input state - use a plain object to avoid TypeScript issues
 export const keys: Record<string, boolean> = {};
+// Track which keys were just pressed this frame (for single-fire actions)
+const justPressed: Record<string, boolean> = {};
 
-export function setupInputListeners() {
+export function setupInputListeners(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
-    keys[e.code] = true;
-    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD'].includes(e.code)) {
+    const code = e.code;
+    if (!keys[code]) {
+      justPressed[code] = true;
+    }
+    keys[code] = true;
+    if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'KeyW', 'KeyA', 'KeyS', 'KeyD', 'Enter'].includes(code)) {
       e.preventDefault();
     }
   };
   const onKeyUp = (e: KeyboardEvent) => {
     keys[e.code] = false;
+    justPressed[e.code] = false;
   };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
@@ -33,6 +38,18 @@ export function setupInputListeners() {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
   };
+}
+
+/** Call at the end of each frame to clear justPressed flags */
+export function clearJustPressed() {
+  for (const k in justPressed) {
+    justPressed[k] = false;
+  }
+}
+
+/** Returns true only on the frame the key was first pressed down */
+export function wasJustPressed(code: string): boolean {
+  return !!justPressed[code];
 }
 
 function aabbCollision(ax: number, ay: number, aw: number, ah: number, bx: number, by: number, bw: number, bh: number) {
@@ -68,17 +85,13 @@ export function updateGame(state: GameState) {
     player.animTimer = 0;
   }
 
-  // Jump (only on fresh press)
-  if ((keys['ArrowUp'] || keys['KeyW'] || keys['Space']) && player.jumpsLeft > 0) {
-    if (!keys._jumpHeld) {
+  // Jump (only on fresh press via justPressed)
+  if (wasJustPressed('ArrowUp') || wasJustPressed('KeyW') || wasJustPressed('Space')) {
+    if (player.jumpsLeft > 0) {
       player.vy = JUMP_FORCE;
       player.jumpsLeft--;
-      keys._jumpHeld = true;
       spawnParticles(state, player.x + player.width / 2, player.y + player.height, COLORS.neonGreen, 6, 2);
     }
-  }
-  if (!keys['ArrowUp'] && !keys['KeyW'] && !keys['Space']) {
-    keys._jumpHeld = false;
   }
 
   // === Physics ===
@@ -99,7 +112,7 @@ export function updateGame(state: GameState) {
   // === Update Platforms ===
   for (const plat of state.platforms) {
     if (plat.y < -500) continue;
-    if (plat.type === 'moving' && plat.originX !== undefined && plat.moveRange !== undefined && plat.moveSpeed !== undefined) {
+    if (plat.type === 'moving' && plat.originX !== undefined && plat.moveRange !== undefined && plat.moveSpeed !== undefined && plat.moveDir !== undefined) {
       plat.x += plat.moveDir * plat.moveSpeed;
       if (plat.x > plat.originX + plat.moveRange || plat.x < plat.originX - plat.moveRange) {
         plat.moveDir *= -1;
@@ -108,7 +121,6 @@ export function updateGame(state: GameState) {
     if (plat.type === 'fragile' && plat.fragileTimer !== undefined) {
       if (player.onGround && aabbCollision(player.x, player.y, player.width, player.height, plat.x, plat.y, plat.width, plat.height)) {
         plat.fragileTimer -= 1;
-        // Flash warning
       }
       if (plat.fragileTimer <= 0) {
         spawnParticles(state, plat.x + plat.width / 2, plat.y + plat.height / 2, COLORS.neonPink, 15, 4);
@@ -129,7 +141,7 @@ export function updateGame(state: GameState) {
     if (playerRight <= plat.x || player.x >= plat.x + plat.width) continue;
 
     // Check if player is falling and would land on this platform
-    if (player.vy >= 0 && playerBottom >= plat.y && playerBottom <= plat.y + plat.height + player.vy + 2) {
+    if (player.vy >= 0 && playerBottom >= plat.y && playerBottom <= plat.y + plat.height + Math.abs(player.vy) + 4) {
       // Land on top
       player.y = plat.y - player.height;
       player.onGround = true;
@@ -144,7 +156,7 @@ export function updateGame(state: GameState) {
       }
 
       // Moving platform carries player
-      if (plat.type === 'moving' && plat.moveSpeed !== undefined) {
+      if (plat.type === 'moving' && plat.moveSpeed !== undefined && plat.moveDir !== undefined) {
         player.x += plat.moveDir * plat.moveSpeed;
       }
     }
@@ -310,7 +322,7 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
   }
 
   // === Coins ===
-  for (const coin of state.coins) {
+  for (const coin of coins) {
     if (coin.collected) continue;
 
     const cy = coin.y + Math.sin(time / 500 + coin.bobOffset) * 4;
@@ -346,7 +358,7 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
   }
 
   // === Enemies ===
-  for (const enemy of state.enemies) {
+  for (const enemy of enemies) {
     if (!enemy.isAlive) continue;
     ctx.shadowColor = COLORS.enemyGlow;
     ctx.shadowBlur = 10;

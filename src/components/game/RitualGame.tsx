@@ -16,6 +16,8 @@ import {
 import {
   setupInputListeners,
   keys,
+  wasJustPressed,
+  clearJustPressed,
   updateGame,
   drawGame,
   drawHUD,
@@ -35,6 +37,9 @@ export default function RitualGame() {
   const cleanupRef = useRef<(() => void) | null>(null);
   const assetsRef = useRef<GameAssets>({ characterImg: null, ritualLogoImg: null });
   const uiUpdateTimerRef = useRef<number>(0);
+  const lastPhaseRef = useRef<GamePhase>('start');
+  const scoreSubmittedRef = useRef(false);
+
   const [gamePhase, setGamePhase] = useState<GamePhase>('start');
   const [chainSubmitted, setChainSubmitted] = useState(false);
   const [chainPending, setChainPending] = useState(false);
@@ -42,11 +47,27 @@ export default function RitualGame() {
   const [displayScore, setDisplayScore] = useState(0);
   const [displayDistance, setDisplayDistance] = useState(0);
   const [displayCoins, setDisplayCoins] = useState(0);
-  const [highScores, setHighScores] = useState<Array<{ score: number; address: string; time: string }>>([]);
   const [showRules, setShowRules] = useState(false);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
 
+  const walletRef = useRef({ address: '' as string | null, balance: '' as string, isConnected: false, isCorrectNetwork: false });
   const { wallet, connect, disconnect, switchToRitual } = useWallet();
+
+  // Keep wallet ref in sync (avoid dependency in game loop)
+  walletRef.current = {
+    address: wallet.address,
+    balance: wallet.balance,
+    isConnected: wallet.isConnected,
+    isCorrectNetwork: wallet.isCorrectNetwork,
+  };
+
+  // Load high scores from localStorage
+  const [highScores, setHighScores] = useState<Array<{ score: number; address: string; time: string }>>(() => {
+    try {
+      const saved = localStorage.getItem('ritual-game-scores');
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
 
   // Preload images
   useEffect(() => {
@@ -65,14 +86,6 @@ export default function RitualGame() {
     };
   }, []);
 
-  // Load high scores
-  const [highScores, setHighScores] = useState<Array<{ score: number; address: string; time: string }>>(() => {
-    try {
-      const saved = localStorage.getItem('ritual-game-scores');
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
-
   const saveScore = useCallback(
     (score: number, address: string) => {
       const entry = { score, address: address || 'anonymous', time: new Date().toLocaleString() };
@@ -86,81 +99,77 @@ export default function RitualGame() {
   );
 
   const submitScoreOnChain = useCallback(async () => {
-    const state = gameStateRef.current;
-    if (!wallet.isConnected || chainSubmitted || chainPending) return;
+    const w = walletRef.current;
+    if (!w.isConnected || chainSubmitted || chainPending) return;
     setChainPending(true);
     await new Promise(resolve => setTimeout(resolve, 2000));
     const hash = '0x' + Array.from({ length: 64 }, () => '0123456789abcdef'[Math.floor(Math.random() * 16)]).join('');
-    state.lastBlockHash = hash;
-    state.onChainScoreSubmitted = true;
-    state.pendingSubmission = false;
+    gameStateRef.current.lastBlockHash = hash;
+    gameStateRef.current.onChainScoreSubmitted = true;
+    gameStateRef.current.pendingSubmission = false;
     setChainTxHash(hash);
     setChainSubmitted(true);
     setChainPending(false);
-  }, [wallet.isConnected, chainSubmitted, chainPending]);
+  }, [chainSubmitted, chainPending]);
 
-  // Start/restart game
+  // Start/restart game (can be called from button click or keyboard)
   const startGame = useCallback(() => {
     const state = gameStateRef.current;
     if (state.phase === 'playing') return;
-
     resetGameForPlaying(state);
     setDisplayScore(0);
     setDisplayDistance(0);
     setDisplayCoins(0);
+    setChainSubmitted(false);
+    setChainPending(false);
+    setChainTxHash('');
+    scoreSubmittedRef.current = false;
     setGamePhase('playing');
   }, []);
 
-  // Main game initialization
+  // Main game initialization - runs ONCE
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Generate initial level for preview
+    // Generate initial level for start screen preview
     generateLevel(gameStateRef.current);
 
-    // Setup input (window-level)
+    // Setup input listeners (window-level)
     cleanupRef.current = setupInputListeners();
 
-    // Focus canvas container on click
-    const container = containerRef.current;
-    const focusHandler = () => canvas.focus();
-    container?.addEventListener('click', focusHandler);
-
-    // Game loop
+    // Game loop - runs continuously, never depends on React state
     const loop = (timestamp: number) => {
       const state = gameStateRef.current;
+      const w = walletRef.current;
 
-      // Handle start/restart via Enter/Space
+      // Handle start/restart via keyboard (Enter or Space)
       if (state.phase === 'start' || state.phase === 'gameover') {
-        if (keys['Enter'] || keys['Space']) {
-          if (!keys._startHeld) {
-            keys._startHeld = true;
-            resetGameForPlaying(state);
-            setDisplayScore(0);
-            setDisplayDistance(0);
-            setDisplayCoins(0);
-            setGamePhase('playing');
-          }
-        } else {
-          keys._startHeld = false;
+        if (wasJustPressed('Enter') || wasJustPressed('Space')) {
+          resetGameForPlaying(state);
+          setDisplayScore(0);
+          setDisplayDistance(0);
+          setDisplayCoins(0);
+          setChainSubmitted(false);
+          setChainPending(false);
+          setChainTxHash('');
+          scoreSubmittedRef.current = false;
+          setGamePhase('playing');
         }
 
-        // Handle on-chain submit
-        if (keys['KeyS'] && state.phase === 'gameover' && wallet.isConnected) {
-          if (!keys._submitHeld) {
-            keys._submitHeld = true;
-            submitScoreOnChain();
-          }
-        } else {
-          keys._submitHeld = false;
+        // Handle on-chain submit via S key
+        if (wasJustPressed('KeyS') && state.phase === 'gameover' && w.isConnected) {
+          submitScoreOnChain();
         }
       }
 
       // Update game physics
       updateGame(state);
+
+      // Clear justPressed flags at end of frame
+      clearJustPressed();
 
       // Throttled UI state sync (every ~200ms)
       if (timestamp - uiUpdateTimerRef.current > 200) {
@@ -171,11 +180,12 @@ export default function RitualGame() {
           setDisplayCoins(state.coins.filter(c => c.collected).length);
         }
 
-        // Detect game over
-        if (state.phase === 'gameover' && gamePhase !== 'gameover') {
+        // Detect game over transition
+        if (state.phase === 'gameover' && lastPhaseRef.current !== 'gameover') {
           setGamePhase('gameover');
-          saveScore(state.score, wallet.address || '');
+          saveScore(state.score, w.address || '');
         }
+        lastPhaseRef.current = state.phase;
       }
 
       // Draw
@@ -184,13 +194,13 @@ export default function RitualGame() {
 
       if (state.phase === 'start') {
         drawGame(ctx, state, timestamp, assets);
-        drawStartScreen(ctx, timestamp, wallet.address, assets);
+        drawStartScreen(ctx, timestamp, w.address, assets);
       } else if (state.phase === 'playing') {
         drawGame(ctx, state, timestamp, assets);
-        drawHUD(ctx, state, wallet.address, wallet.balance);
+        drawHUD(ctx, state, w.address, w.balance);
       } else if (state.phase === 'gameover') {
         drawGame(ctx, state, timestamp, assets);
-        drawGameOver(ctx, state, timestamp, wallet.address);
+        drawGameOver(ctx, state, timestamp, w.address);
       }
 
       animFrameRef.current = requestAnimationFrame(loop);
@@ -201,9 +211,9 @@ export default function RitualGame() {
     return () => {
       cancelAnimationFrame(animFrameRef.current);
       cleanupRef.current?.();
-      container?.removeEventListener('click', focusHandler);
     };
-  }, [wallet.address, wallet.balance, wallet.isConnected, gamePhase, saveScore, submitScoreOnChain]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0a0a1a] flex flex-col items-center relative overflow-hidden">
@@ -256,7 +266,7 @@ export default function RitualGame() {
       {/* Main content */}
       <main className="relative z-10 flex-1 w-full max-w-5xl mx-auto px-4 py-3 flex flex-col lg:flex-row gap-4">
         {/* Game Canvas Area */}
-        <div ref={containerRef} className="flex-1 flex flex-col items-center" tabIndex={0}>
+        <div ref={containerRef} className="flex-1 flex flex-col items-center">
           {/* Stats bar */}
           <div className="w-full flex items-center justify-between mb-2 px-1">
             <div className="flex items-center gap-4">
@@ -277,14 +287,12 @@ export default function RitualGame() {
           </div>
 
           {/* Canvas wrapper */}
-          <div className="relative rounded-xl overflow-hidden border border-[#00ffaa]/20 shadow-[0_0_30px_rgba(0,255,170,0.1)]" style={{ outline: 'none' }}>
+          <div className="relative rounded-xl overflow-hidden border border-[#00ffaa]/20 shadow-[0_0_30px_rgba(0,255,170,0.1)]">
             <canvas
               ref={canvasRef}
               width={CANVAS_WIDTH}
               height={CANVAS_HEIGHT}
               className="block w-full max-w-[800px] h-auto cursor-default"
-              tabIndex={0}
-              style={{ outline: 'none' }}
             />
 
             {showRules && gamePhase === 'playing' && (
@@ -315,13 +323,15 @@ export default function RitualGame() {
               <button
                 onTouchStart={(e) => { e.preventDefault(); keys['ArrowLeft'] = true; }}
                 onTouchEnd={(e) => { e.preventDefault(); keys['ArrowLeft'] = false; }}
+                onContextMenu={(e) => e.preventDefault()}
                 className="w-14 h-14 rounded-xl bg-white/10 border border-[#00ffaa]/20 flex items-center justify-center text-[#00ffaa] font-mono text-xl active:bg-[#00ffaa]/20 select-none"
               >
                 &larr;
               </button>
               <button
-                onTouchStart={(e) => { e.preventDefault(); keys['Space'] = true; }}
-                onTouchEnd={(e) => { e.preventDefault(); keys['Space'] = false; }}
+                onTouchStart={(e) => { e.preventDefault(); keys['ArrowUp'] = true; }}
+                onTouchEnd={(e) => { e.preventDefault(); keys['ArrowUp'] = false; }}
+                onContextMenu={(e) => e.preventDefault()}
                 className="w-14 h-14 rounded-xl bg-white/10 border border-[#00ffaa]/20 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/20 select-none"
               >
                 JUMP
@@ -329,6 +339,7 @@ export default function RitualGame() {
               <button
                 onTouchStart={(e) => { e.preventDefault(); keys['ArrowRight'] = true; }}
                 onTouchEnd={(e) => { e.preventDefault(); keys['ArrowRight'] = false; }}
+                onContextMenu={(e) => e.preventDefault()}
                 className="w-14 h-14 rounded-xl bg-white/10 border border-[#00ffaa]/20 flex items-center justify-center text-[#00ffaa] font-mono text-xl active:bg-[#00ffaa]/20 select-none"
               >
                 &rarr;
