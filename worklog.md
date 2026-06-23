@@ -1,65 +1,22 @@
-# Ritual Runner - Work Log
-
 ---
 Task ID: 1
 Agent: Main Agent
-Task: Build a blockchain game on Ritual Testnet
+Task: 完善游戏所有功能并部署
 
 Work Log:
-- Read GitHub repo (VETH13/main-master) - a Godot 4 2D platformer + web wrapper for Ritual testnet
-- Initialized fullstack Next.js 16 project with TypeScript and Tailwind CSS
-- Installed ethers.js v6 for blockchain interaction
-- Created Ritual Testnet configuration (chainId 1117, RPC endpoint)
-- Built MetaMask wallet hook (useWallet) with connect/disconnect/network switching
-- Developed complete 2D platformer game engine with Canvas rendering
-  - Player physics (gravity, jumping, double-jump)
-  - Procedural level generation with 4 platform types (normal, moving, fragile, bounce)
-  - Coin collection (normal/rare/legendary with different values)
-  - Enemy AI (walkers and flyers) with stomp mechanic
-  - Particle system for visual effects
-  - Parallax background with cityscape and stars
-  - Full HUD with score, distance, wallet info
-  - Start screen, game over screen, on-chain score submission
-- Built React game component with shadcn/ui sidebar (leaderboard, network info, on-chain actions)
-- Responsive design with mobile controls
-- Verified in browser - game renders correctly, no console errors
+- 读取并分析现有代码：gameTypes.ts, gameEngine.ts, characters.ts, RitualGame.tsx
+- 发现角色系统、技能系统、排行榜已部分实现，但名字固定、只有8个角色
+- 增强 characters.ts：随机名字生成器（prefix+suffix组合，50+前缀+50+后缀），扩展到10个角色（加入原始上传的2张图片作为传奇角色），每次会话随机分配技能
+- 增强 gameEngine.ts：游戏结束界面新增角色信息面板（头像/名字/稀有度/技能）、Top 5 排名展示、角色选择改为5列布局+选中三角指示器
+- 增强 RitualGame.tsx：排行榜增加排名图标(皇冠/奖牌)、角色头像、稀有度徽章、技能名显示；游戏中显示当前角色信息面板；分数记录增加技能和稀有度字段
+- 本地编译通过
+- 推送到 GitHub (gjim2571/main-master)
+- 通过 Vercel CLI 部署到生产环境
 
 Stage Summary:
-- Produced: Full blockchain game "Ritual Runner" on Ritual Testnet
-- Key features: 2D platformer, MetaMask integration, on-chain score submission, leaderboard
-- Files created:
-  - /src/lib/ritual.ts (chain config)
-  - /src/hooks/useWallet.ts (wallet hook)
-  - /src/lib/gameTypes.ts (game types/constants)
-  - /src/lib/gameEngine.ts (game loop/rendering)
-  - /src/components/game/RitualGame.tsx (main game component)
-
----
-Task ID: 2
-Agent: Main Agent
-Task: Integrate user-uploaded images as game elements
-
-Work Log:
-- Analyzed two uploaded images using VLM:
-  - Image 1: Anime-style character with green lightning effects, black cat companion
-  - Image 2: Green tech illustration with endless knot pattern (blockchain cycle theme)
-- Copied images to public directory (character-art.jpeg, ritual-logo-art.jpeg)
-- Updated gameTypes.ts: Added GameAssets interface, FloatingArt interface, floating arts generation
-- Updated gameEngine.ts:
-  - drawGame() now accepts GameAssets parameter
-  - Player sprite: draws character image (Image 1) as player with flip animation and green lightning aura
-  - Floating ritual logos: Image 2 floats in game world as parallax decorative elements
-  - Start screen: Both images displayed prominently with neon glow effects and rotation
-  - Fallback: geometric player body if images fail to load
-- Updated RitualGame.tsx:
-  - Image preloading with HTMLImageElement (onload/onerror handling)
-  - Sidebar: Added Game Assets showcase card displaying both images side by side
-  - Header: Replaced Zap icon with ritual-logo-art.jpeg as logo
-  - Assets loaded status indicator
-- Verified in browser: all 3 img elements loaded successfully (1179x1153, 1200x1193)
-
-Stage Summary:
-- Image 1 (anime character) → Game player sprite + start screen showcase
-- Image 2 (ritual art) → Floating game world decorations + header logo + start screen
-- Both images visible in sidebar "Game Assets" card
-- No console errors, responsive design maintained
+- 10个角色（8张角色图 + 2张原始上传图），每次随机名字和技能
+- 8种独特技能全部在游戏中生效
+- 游戏结束显示角色详情 + Top 5 排名
+- 侧边栏排行榜增强显示
+- 部署地址: https://my-project-eight-ivory-35.vercel.app
+- GitHub: https://github.com/gjim2571/main-master
