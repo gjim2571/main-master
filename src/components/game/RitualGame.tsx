@@ -361,19 +361,25 @@ export default function RitualGame() {
     walletRef.current = { address: wallet.address, balance: wallet.balance, isConnected: wallet.isConnected, isCorrectNetwork: wallet.isCorrectNetwork };
   });
 
-  // Main game loop (only runs during playing/gameover, not select)
+  // Main game loop
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    generateLevel(gameStateRef.current);
+    // Ensure initial level is generated
+    if (gameStateRef.current.platforms.length === 0) {
+      generateLevel(gameStateRef.current);
+    }
     cleanupRef.current = setupInputListeners();
 
     const loop = (timestamp: number) => {
       const state = gameStateRef.current;
       const w = walletRef.current;
+
+      // Sync wallet state every frame
+      walletRef.current = { address: wallet.address, balance: wallet.balance, isConnected: wallet.isConnected, isCorrectNetwork: wallet.isCorrectNetwork };
 
       // Handle character select keyboard input
       if (state.phase === 'select') {
@@ -386,14 +392,19 @@ export default function RitualGame() {
           setSelectIndex(charSelectIndexRef.current);
         }
         if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          confirmCharacterAndStartRef.current();
+          if (confirmCharacterAndStartRef.current) {
+            confirmCharacterAndStartRef.current();
+          } else {
+            // Fallback: call confirmCharacterAndStart directly
+            confirmCharacterAndStart();
+          }
         }
       }
 
       // Handle gameover input in canvas loop
       if (state.phase === 'gameover') {
         if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          const newChars = refreshCharactersRef.current();
+          const newChars = refreshCharactersRef.current ? refreshCharactersRef.current() : refreshCharacters();
           const { stars, floatingArts, onChainScoreSubmitted, pendingSubmission, lastBlockHash } = state;
           Object.assign(state, createInitialGameState());
           state.stars = stars;
@@ -409,7 +420,7 @@ export default function RitualGame() {
           setGamePhase('select');
         }
         if (wasJustPressed('KeyS') && w.isConnected) {
-          submitScoreOnChainRef.current();
+          submitScoreOnChainRef.current ? submitScoreOnChainRef.current() : submitScoreOnChain();
         }
       }
 
@@ -427,7 +438,7 @@ export default function RitualGame() {
           state.selectedCharacterImg = selectedCharImg;
           const char = getActiveCharacters().find(c => c.id === selectedCharId);
           if (char) {
-            applyAbilityToStateRef.current(state, char);
+            applyAbilityToStateRef.current ? applyAbilityToStateRef.current(state, char) : applyAbilityToState(state, char);
           }
           setGamePhase('playing');
         }
