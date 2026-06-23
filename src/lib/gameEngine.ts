@@ -17,6 +17,20 @@ export const keys: Record<string, boolean> = {};
 // Track which keys were just pressed this frame (for single-fire actions)
 const justPressed: Record<string, boolean> = {};
 
+/** Simulate a key press (used by mobile touch controls) */
+export function simulateKeyDown(code: string) {
+  if (!keys[code]) {
+    justPressed[code] = true;
+  }
+  keys[code] = true;
+}
+
+/** Simulate a key release (used by mobile touch controls) */
+export function simulateKeyUp(code: string) {
+  keys[code] = false;
+  justPressed[code] = false;
+}
+
 export function setupInputListeners(): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
     const code = e.code;
@@ -34,9 +48,19 @@ export function setupInputListeners(): () => void {
   };
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
+
+  // Prevent default touch behaviors on the whole page (scrolling, zooming) during gameplay
+  const preventTouch = (e: TouchEvent) => {
+    if (e.target instanceof HTMLElement && e.target.closest('canvas, [data-game-control]')) {
+      e.preventDefault();
+    }
+  };
+  document.addEventListener('touchmove', preventTouch, { passive: false });
+
   return () => {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
+    document.removeEventListener('touchmove', preventTouch);
   };
 }
 

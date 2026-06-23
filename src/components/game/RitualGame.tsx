@@ -18,6 +18,8 @@ import {
   keys,
   wasJustPressed,
   clearJustPressed,
+  simulateKeyDown,
+  simulateKeyUp,
   updateGame,
   drawGame,
   drawHUD,
@@ -216,7 +218,7 @@ export default function RitualGame() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[#0a0a1a] flex flex-col items-center relative overflow-hidden">
+    <div className="min-h-screen bg-[#0a0a1a] flex flex-col items-center relative overflow-hidden" style={{ touchAction: 'none' }}>
       {/* Background effects */}
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a2e] via-[#0a0a1a] to-[#1a0a2e] pointer-events-none" />
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-[#00ffaa] opacity-[0.03] rounded-full blur-[100px] pointer-events-none" />
@@ -287,12 +289,13 @@ export default function RitualGame() {
           </div>
 
           {/* Canvas wrapper */}
-          <div className="relative rounded-xl overflow-hidden border border-[#00ffaa]/20 shadow-[0_0_30px_rgba(0,255,170,0.1)]">
+          <div className="relative rounded-xl overflow-hidden border border-[#00ffaa]/20 shadow-[0_0_30px_rgba(0,255,170,0.1]" style={{ touchAction: 'none' }}>
             <canvas
               ref={canvasRef}
               width={CANVAS_WIDTH}
               height={CANVAS_HEIGHT}
               className="block w-full max-w-[800px] h-auto cursor-default"
+              style={{ touchAction: 'none' }}
             />
 
             {showRules && gamePhase === 'playing' && (
@@ -318,29 +321,38 @@ export default function RitualGame() {
           )}
 
           {/* Mobile controls */}
-          <div className="w-full flex justify-center mt-3 lg:hidden">
-            <div className="flex items-center gap-3">
+          <div className="w-full flex justify-center mt-3 lg:hidden" style={{ touchAction: 'none' }}>
+            <div className="flex items-center gap-4">
               <button
-                onTouchStart={(e) => { e.preventDefault(); keys['ArrowLeft'] = true; }}
-                onTouchEnd={(e) => { e.preventDefault(); keys['ArrowLeft'] = false; }}
+                data-game-control="true"
+                onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowLeft'); }}
+                onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }}
+                onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }}
                 onContextMenu={(e) => e.preventDefault()}
-                className="w-14 h-14 rounded-xl bg-white/10 border border-[#00ffaa]/20 flex items-center justify-center text-[#00ffaa] font-mono text-xl active:bg-[#00ffaa]/20 select-none"
+                className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none"
+                style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}
               >
                 &larr;
               </button>
               <button
-                onTouchStart={(e) => { e.preventDefault(); keys['ArrowUp'] = true; }}
-                onTouchEnd={(e) => { e.preventDefault(); keys['ArrowUp'] = false; }}
+                data-game-control="true"
+                onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowUp'); }}
+                onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }}
+                onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }}
                 onContextMenu={(e) => e.preventDefault()}
-                className="w-14 h-14 rounded-xl bg-white/10 border border-[#00ffaa]/20 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/20 select-none"
+                className="w-16 h-16 rounded-xl bg-[#00ffaa]/15 border border-[#00ffaa]/40 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/30 select-none"
+                style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}
               >
                 JUMP
               </button>
               <button
-                onTouchStart={(e) => { e.preventDefault(); keys['ArrowRight'] = true; }}
-                onTouchEnd={(e) => { e.preventDefault(); keys['ArrowRight'] = false; }}
+                data-game-control="true"
+                onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowRight'); }}
+                onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }}
+                onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }}
                 onContextMenu={(e) => e.preventDefault()}
-                className="w-14 h-14 rounded-xl bg-white/10 border border-[#00ffaa]/20 flex items-center justify-center text-[#00ffaa] font-mono text-xl active:bg-[#00ffaa]/20 select-none"
+                className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none"
+                style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}
               >
                 &rarr;
               </button>
