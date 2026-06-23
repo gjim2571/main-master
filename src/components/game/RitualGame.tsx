@@ -195,11 +195,12 @@ function CharacterSelectOverlay({
             &larr; Prev
           </button>
           <button
-            onClick={onConfirm}
-            className="px-8 py-2.5 rounded-xl bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm active:bg-[#00ffaa]/90 transition-colors shadow-[0_0_15px_rgba(0,255,170,0.3)]"
-            style={{ touchAction: 'manipulation' }}
+            onClick={(e) => { e.stopPropagation(); onConfirm(); }}
+            onTouchEnd={(e) => { e.preventDefault(); e.stopPropagation(); onConfirm(); }}
+            className="px-8 py-3 rounded-xl bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-base active:bg-[#00ffaa]/90 transition-colors shadow-[0_0_20px_rgba(0,255,170,0.4)]"
+            style={{ touchAction: 'manipulation', minHeight: '48px' }}
           >
-            Confirm
+            START GAME
           </button>
           <button
             onClick={() => onSelect((selectedIndex + 1) % characters.length)}
@@ -288,37 +289,47 @@ export default function RitualGame() {
   }, [chainSubmitted, chainPending]);
 
   const confirmCharacterAndStart = useCallback(() => {
-    const state = gameStateRef.current;
-    const chars = displayCharsRef.current;
-    const idx = charSelectIndexRef.current;
-    const selected = chars[idx];
-    if (!selected) return;
+    try {
+      const state = gameStateRef.current;
+      const chars = displayCharsRef.current;
+      const idx = charSelectIndexRef.current;
+      const selected = chars[idx];
+      if (!selected) {
+        console.warn('[RitualGame] No character selected at index', idx);
+        return;
+      }
 
-    // Load the image
-    // Start game immediately — don't block on image loading
-    resetGameForPlaying(state);
-    state.selectedCharacterId = selected.id;
-    applyAbilityToState(state, selected);
-    setActiveCharacters(chars);
-    lastSelectedCharRef.current = selected;
-    setSelectedCharName(selected.name);
-    setSelectedCharAbility(selected.ability.name);
-    setSelectedCharRarity(selected.rarity);
-    setDisplayScore(0);
-    setDisplayDistance(0);
-    setDisplayCoins(0);
-    setChainSubmitted(false);
-    setChainPending(false);
-    setChainTxHash('');
-    setGamePhase('playing');
+      console.log('[RitualGame] Starting game with', selected.name, 'ability:', selected.ability.id);
 
-    // Load character image asynchronously (update sprite when ready)
-    const img = new Image();
-    img.src = selected.imageSrc;
-    if (img.complete && img.naturalWidth > 0) {
-      state.selectedCharacterImg = img;
-    } else {
-      img.onload = () => { state.selectedCharacterImg = img; };
+      // Start game immediately — don't block on image loading
+      resetGameForPlaying(state);
+      state.selectedCharacterId = selected.id;
+      applyAbilityToState(state, selected);
+      setActiveCharacters(chars);
+      lastSelectedCharRef.current = selected;
+      setSelectedCharName(selected.name);
+      setSelectedCharAbility(selected.ability.name);
+      setSelectedCharRarity(selected.rarity);
+      setDisplayScore(0);
+      setDisplayDistance(0);
+      setDisplayCoins(0);
+      setChainSubmitted(false);
+      setChainPending(false);
+      setChainTxHash('');
+      setGamePhase('playing');
+
+      console.log('[RitualGame] Phase is now:', state.phase, 'platforms:', state.platforms.length);
+
+      // Load character image asynchronously (update sprite when ready)
+      const img = new Image();
+      img.src = selected.imageSrc;
+      if (img.complete && img.naturalWidth > 0) {
+        state.selectedCharacterImg = img;
+      } else {
+        img.onload = () => { state.selectedCharacterImg = img; };
+      }
+    } catch (err) {
+      console.error('[RitualGame] Error starting game:', err);
     }
   }, []);
 
@@ -598,12 +609,11 @@ export default function RitualGame() {
           {/* Mobile game controls (only during playing) */}
           {gamePhase === 'playing' && (
             <div className="w-full flex justify-between mt-3 lg:hidden" style={{ touchAction: 'none' }}>
-              <div className="flex items-center gap-4">
-                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowLeft'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&larr;</button>
-                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowUp'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&uarr;</button>
-                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowRight'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&rarr;</button>
+              <div className="flex items-center gap-3">
+                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowLeft'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onContextMenu={(e) => e.preventDefault()} className="w-18 h-18 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-3xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', width: '72px', height: '72px' }}>&larr;</button>
+                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowRight'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onContextMenu={(e) => e.preventDefault()} className="w-18 h-18 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-3xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', width: '72px', height: '72px' }}>&rarr;</button>
               </div>
-              <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('Space'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('Space'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('Space'); }} onContextMenu={(e) => e.preventDefault()} className="w-20 h-20 rounded-2xl bg-[#00ffaa]/15 border-2 border-[#00ffaa]/50 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/30 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>JUMP</button>
+              <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('Space'); simulateKeyDown('ArrowUp'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('Space'); simulateKeyUp('ArrowUp'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('Space'); simulateKeyUp('ArrowUp'); }} onContextMenu={(e) => e.preventDefault()} className="rounded-2xl bg-[#00ffaa]/15 border-2 border-[#00ffaa]/50 flex items-center justify-center text-[#00ffaa] font-mono text-base font-bold active:bg-[#00ffaa]/30 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none', width: '100px', height: '100px' }}>JUMP</button>
             </div>
           )}
 
