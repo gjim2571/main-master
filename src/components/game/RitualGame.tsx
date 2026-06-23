@@ -26,6 +26,7 @@ import {
   drawStartScreen,
   drawGameOver,
   drawCharacterSelect,
+  setActiveCharacters,
 } from '@/lib/gameEngine';
 import {
   getRandomCharacters,
@@ -33,7 +34,7 @@ import {
   RARITY_COLORS,
   GameCharacter,
 } from '@/lib/characters';
-import { Wallet, Unplug, RotateCcw, Trophy, Zap, Info } from 'lucide-react';
+import { Wallet, Unplug, RotateCcw, Trophy, Zap, Info, Crown, Medal, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -44,7 +45,11 @@ interface ScoreEntry {
   time: string;
   characterName: string;
   characterId: number;
+  abilityName: string;
+  rarity: string;
 }
+
+const CHARACTER_COUNT = 10;
 
 export default function RitualGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -56,8 +61,9 @@ export default function RitualGame() {
   const uiUpdateTimerRef = useRef<number>(0);
   const lastPhaseRef = useRef<GamePhase>('start');
   const charSelectIndexRef = useRef(0);
-  const displayCharsRef = useRef<GameCharacter[]>(getRandomCharacters(8));
+  const displayCharsRef = useRef<GameCharacter[]>(getRandomCharacters(CHARACTER_COUNT));
   const charImgsRef = useRef<Map<number, HTMLImageElement>>(new Map());
+  const lastSelectedCharRef = useRef<GameCharacter | null>(null);
 
   const [gamePhase, setGamePhase] = useState<GamePhase>('start');
   const [chainSubmitted, setChainSubmitted] = useState(false);
@@ -66,9 +72,10 @@ export default function RitualGame() {
   const [displayScore, setDisplayScore] = useState(0);
   const [displayDistance, setDisplayDistance] = useState(0);
   const [displayCoins, setDisplayCoins] = useState(0);
-  const [showRules, setShowRules] = useState(false);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [selectedCharName, setSelectedCharName] = useState('');
+  const [selectedCharAbility, setSelectedCharAbility] = useState('');
+  const [selectedCharRarity, setSelectedCharRarity] = useState('');
 
   const walletRef = useRef({ address: '' as string | null, balance: '' as string, isConnected: false, isCorrectNetwork: false });
   const { wallet, connect, disconnect, switchToRitual } = useWallet();
@@ -92,19 +99,24 @@ export default function RitualGame() {
     logoImg.src = '/ritual-logo-art.jpeg';
     logoImg.onload = () => { assetsRef.current.ritualLogoImg = logoImg; };
 
-    // Preload all 8 character images
-    displayCharsRef.current.forEach(ch => {
-      const img = new Image();
-      img.src = ch.imageSrc;
-      img.onload = () => { charImgsRef.current.set(ch.id, img); };
-      charImgsRef.current.set(ch.id, img);
-    });
+    // Preload all character images
+    const preloadChars = () => {
+      displayCharsRef.current.forEach(ch => {
+        if (!charImgsRef.current.has(ch.id)) {
+          const img = new Image();
+          img.src = ch.imageSrc;
+          img.onload = () => { charImgsRef.current.set(ch.id, img); };
+          charImgsRef.current.set(ch.id, img);
+        }
+      });
+    };
+    preloadChars();
   }, []);
 
-  const saveScore = useCallback((score: number, address: string, charName: string, charId: number) => {
-    const entry: ScoreEntry = { score, address: address || 'anonymous', time: new Date().toLocaleString(), characterName: charName, characterId };
+  const saveScore = useCallback((score: number, address: string, charName: string, charId: number, abilityName: string, rarity: string) => {
+    const entry: ScoreEntry = { score, address: address || 'anonymous', time: new Date().toLocaleString(), characterName: charName, characterId, abilityName, rarity };
     setHighScores(prev => {
-      const newScores = [...prev, entry].sort((a, b) => b.score - a.score).slice(0, 20);
+      const newScores = [...prev, entry].sort((a, b) => b.score - a.score).slice(0, 50);
       try { localStorage.setItem('ritual-game-scores', JSON.stringify(newScores)); } catch { /* ignore */ }
       return newScores;
     });
@@ -136,12 +148,14 @@ export default function RitualGame() {
     resetGameForPlaying(state);
     state.selectedCharacterId = selected.id;
     state.selectedCharacterImg = charImg;
-    if (selected.ability.id === 'shield') {
-      state.player.shieldActive = true;
-    }
     applyAbilityToState(state, selected);
 
+    setActiveCharacters(chars);
+    lastSelectedCharRef.current = selected;
+
     setSelectedCharName(selected.name);
+    setSelectedCharAbility(selected.ability.name);
+    setSelectedCharRarity(selected.rarity);
     setDisplayScore(0);
     setDisplayDistance(0);
     setDisplayCoins(0);
@@ -154,9 +168,20 @@ export default function RitualGame() {
   const startGame = useCallback(() => {
     const state = gameStateRef.current;
     if (state.phase === 'playing') return;
-    // Go to character select
-    displayCharsRef.current = getRandomCharacters(8);
+    const newChars = getRandomCharacters(CHARACTER_COUNT);
+    displayCharsRef.current = newChars;
     charSelectIndexRef.current = 0;
+
+    // Preload new character images
+    newChars.forEach(ch => {
+      if (!charImgsRef.current.has(ch.id)) {
+        const img = new Image();
+        img.src = ch.imageSrc;
+        img.onload = () => { charImgsRef.current.set(ch.id, img); };
+        charImgsRef.current.set(ch.id, img);
+      }
+    });
+
     state.phase = 'select';
     setGamePhase('select');
   }, []);
@@ -176,24 +201,33 @@ export default function RitualGame() {
     const loop = (timestamp: number) => {
       const state = gameStateRef.current;
       const w = walletRef.current;
+      const charCount = displayCharsRef.current.length;
 
       if (state.phase === 'start') {
         if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          displayCharsRef.current = getRandomCharacters(8);
+          const newChars = getRandomCharacters(CHARACTER_COUNT);
+          displayCharsRef.current = newChars;
           charSelectIndexRef.current = 0;
+          newChars.forEach(ch => {
+            if (!charImgsRef.current.has(ch.id)) {
+              const img = new Image();
+              img.src = ch.imageSrc;
+              img.onload = () => { charImgsRef.current.set(ch.id, img); };
+              charImgsRef.current.set(ch.id, img);
+            }
+          });
           state.phase = 'select';
           setGamePhase('select');
         }
       } else if (state.phase === 'select') {
-        // Browse characters
         if (selectBrowseCooldown > 0) selectBrowseCooldown--;
         if (selectBrowseCooldown === 0) {
           if (wasJustPressed('ArrowLeft') || wasJustPressed('KeyA')) {
-            charSelectIndexRef.current = (charSelectIndexRef.current - 1 + 8) % 8;
+            charSelectIndexRef.current = (charSelectIndexRef.current - 1 + charCount) % charCount;
             selectBrowseCooldown = 8;
           }
           if (wasJustPressed('ArrowRight') || wasJustPressed('KeyD')) {
-            charSelectIndexRef.current = (charSelectIndexRef.current + 1) % 8;
+            charSelectIndexRef.current = (charSelectIndexRef.current + 1) % charCount;
             selectBrowseCooldown = 8;
           }
         }
@@ -202,8 +236,17 @@ export default function RitualGame() {
         }
       } else if (state.phase === 'gameover') {
         if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          displayCharsRef.current = getRandomCharacters(8);
+          const newChars = getRandomCharacters(CHARACTER_COUNT);
+          displayCharsRef.current = newChars;
           charSelectIndexRef.current = 0;
+          newChars.forEach(ch => {
+            if (!charImgsRef.current.has(ch.id)) {
+              const img = new Image();
+              img.src = ch.imageSrc;
+              img.onload = () => { charImgsRef.current.set(ch.id, img); };
+              charImgsRef.current.set(ch.id, img);
+            }
+          });
           resetGameForPlaying(state);
           state.phase = 'select';
           setGamePhase('select');
@@ -228,7 +271,7 @@ export default function RitualGame() {
           setGamePhase('gameover');
           const charId = state.selectedCharacterId;
           const ch = displayCharsRef.current.find(c => c.id === charId);
-          saveScore(state.score, w.address || '', ch?.name || 'Unknown', charId);
+          saveScore(state.score, w.address || '', ch?.name || 'Unknown', charId, ch?.ability.name || '', ch?.rarity || 'common');
         }
         if (state.phase === 'select' && lastPhaseRef.current !== 'select') {
           setGamePhase('select');
@@ -265,12 +308,14 @@ export default function RitualGame() {
   // Mobile: handle character select with swipe-like buttons
   const mobileSelectLeft = () => {
     if (gameStateRef.current.phase === 'select') {
-      charSelectIndexRef.current = (charSelectIndexRef.current - 1 + 8) % 8;
+      const count = displayCharsRef.current.length;
+      charSelectIndexRef.current = (charSelectIndexRef.current - 1 + count) % count;
     }
   };
   const mobileSelectRight = () => {
     if (gameStateRef.current.phase === 'select') {
-      charSelectIndexRef.current = (charSelectIndexRef.current + 1) % 8;
+      const count = displayCharsRef.current.length;
+      charSelectIndexRef.current = (charSelectIndexRef.current + 1) % count;
     }
   };
   const mobileConfirm = () => {
@@ -281,6 +326,22 @@ export default function RitualGame() {
     }
   };
 
+  const getRankIcon = (i: number) => {
+    if (i === 0) return <Crown className="w-3 h-3 text-[#ffd700]" />;
+    if (i === 1) return <Medal className="w-3 h-3 text-[#c0c0c0]" />;
+    if (i === 2) return <Medal className="w-3 h-3 text-[#cd7f32]" />;
+    return <span className="text-white/30 text-[10px] font-mono w-3 text-center">{i + 1}</span>;
+  };
+
+  const getCharImgSrc = (entry: ScoreEntry) => {
+    if (entry.characterId > 0) {
+      const chars = displayCharsRef.current;
+      const ch = chars.find(c => c.id === entry.characterId);
+      if (ch) return ch.imageSrc;
+    }
+    return '/characters/char1.jpg';
+  };
+
   return (
     <div className="min-h-screen bg-[#0a0a1a] flex flex-col items-center relative overflow-hidden" style={{ touchAction: 'none' }}>
       <div className="absolute inset-0 bg-gradient-to-b from-[#0a0a2e] via-[#0a0a1a] to-[#1a0a2e] pointer-events-none" />
@@ -288,7 +349,7 @@ export default function RitualGame() {
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-[#ff3366] opacity-[0.03] rounded-full blur-[100px] pointer-events-none" />
 
       {/* Header */}
-      <header className="relative z-10 w-full max-w-5xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between">
+      <header className="relative z-10 w-full max-w-6xl mx-auto px-4 pt-4 pb-2 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-lg overflow-hidden border border-[#00ffaa]/30 shadow-[0_0_10px_rgba(0,255,170,0.2)]">
             <img src="/ritual-logo-art.jpeg" alt="Ritual" className="w-full h-full object-cover" />
@@ -309,7 +370,7 @@ export default function RitualGame() {
                 {wallet.balance} ETH
               </Badge>
               {!wallet.isCorrectNetwork && (
-                <Button size="sm" variant="outline" className="border-[#ff3366] text-[#ff3366] hover:bg-[#ff3366]/10 font-mono text-xs" onClick={switchToRitual}>Switch Network</Button>
+                <Button size="sm" variant="outline" className="border-[#ff3366] text-[#ff3366] hover:bg-[#ff3366]/10 font-mono text-xs" onClick={switchToRitual}>Switch</Button>
               )}
               <Button size="sm" variant="ghost" className="text-white/50 hover:text-white font-mono text-xs" onClick={disconnect}>
                 <Unplug className="w-3 h-3 mr-1" />Disconnect
@@ -323,7 +384,7 @@ export default function RitualGame() {
         </div>
       </header>
 
-      <main className="relative z-10 flex-1 w-full max-w-5xl mx-auto px-4 py-3 flex flex-col lg:flex-row gap-4">
+      <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-3 flex flex-col lg:flex-row gap-4">
         <div ref={containerRef} className="flex-1 flex flex-col items-center">
           {/* Stats bar */}
           <div className="w-full flex items-center justify-between mb-2 px-1">
@@ -337,9 +398,16 @@ export default function RitualGame() {
               </div>
             </div>
             {selectedCharName && gamePhase === 'playing' && (
-              <Badge variant="outline" className="text-[#00ffaa]/70 border-[#00ffaa]/20 bg-[#00ffaa]/5 font-mono text-[10px]">
-                {selectedCharName}
-              </Badge>
+              <div className="flex items-center gap-2">
+                <Badge variant="outline" className="text-[#00ffaa]/70 border-[#00ffaa]/20 bg-[#00ffaa]/5 font-mono text-[10px]">
+                  {selectedCharName}
+                </Badge>
+                {selectedCharAbility && (
+                  <Badge variant="outline" className="text-white/40 border-white/10 bg-white/5 font-mono text-[9px]">
+                    {selectedCharAbility}
+                  </Badge>
+                )}
+              </div>
             )}
           </div>
 
@@ -359,10 +427,10 @@ export default function RitualGame() {
 
           {/* Mobile select/confirm for character select screen */}
           {gamePhase === 'select' && (
-            <div className="w-full flex justify-center mt-3 lg:hidden gap-4" style={{ touchAction: 'none' }}>
-              <button onTouchStart={(e) => { e.preventDefault(); mobileSelectLeft(); }} className="px-6 py-3 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm select-none" style={{ touchAction: 'none' }}>&larr; Prev</button>
-              <button onTouchStart={(e) => { e.preventDefault(); mobileConfirm(); }} className="px-8 py-3 rounded-xl bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm select-none" style={{ touchAction: 'none' }}>Confirm</button>
-              <button onTouchStart={(e) => { e.preventDefault(); mobileSelectRight(); }} className="px-6 py-3 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm select-none" style={{ touchAction: 'none' }}>Next &rarr;</button>
+            <div className="w-full flex justify-center mt-3 lg:hidden gap-3" style={{ touchAction: 'none' }}>
+              <button onTouchStart={(e) => { e.preventDefault(); mobileSelectLeft(); }} className="px-5 py-3 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm select-none active:bg-[#00ffaa]/15" style={{ touchAction: 'none' }}>&larr; Prev</button>
+              <button onTouchStart={(e) => { e.preventDefault(); mobileConfirm(); }} className="px-7 py-3 rounded-xl bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm select-none active:bg-[#00ffaa]/90" style={{ touchAction: 'none' }}>Confirm</button>
+              <button onTouchStart={(e) => { e.preventDefault(); mobileSelectRight(); }} className="px-5 py-3 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm select-none active:bg-[#00ffaa]/15" style={{ touchAction: 'none' }}>Next &rarr;</button>
             </div>
           )}
 
@@ -375,31 +443,79 @@ export default function RitualGame() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-full lg:w-72 flex flex-col gap-3">
+        <div className="w-full lg:w-80 flex flex-col gap-3">
+          {/* Selected Character Info (during playing/gameover) */}
+          {(gamePhase === 'playing' || gamePhase === 'gameover') && lastSelectedCharRef.current && (
+            <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-xs font-mono text-[#00ffaa] flex items-center gap-2">
+                  <Star className="w-3 h-3" />Active Character
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="flex items-center gap-3">
+                  {lastSelectedCharRef.current && (
+                    <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
+                      <img src={lastSelectedCharRef.current.imageSrc} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-sm font-bold text-white truncate">{selectedCharName}</span>
+                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono" style={{ borderColor: RARITY_COLORS[selectedCharRarity as keyof typeof RARITY_COLORS] + '60', color: RARITY_COLORS[selectedCharRarity as keyof typeof RARITY_COLORS] }}>
+                        {selectedCharRarity?.toUpperCase()}
+                      </Badge>
+                    </div>
+                    {selectedCharAbility && (
+                      <div className="font-mono text-[10px] text-white/40 mt-0.5">{selectedCharAbility}</div>
+                    )}
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Leaderboard */}
           <Card className="bg-[#0f0f2f] border-[#00ffaa]/15 flex-1">
             <CardHeader className="pb-2 pt-3 px-4">
               <CardTitle className="text-xs font-mono text-[#ffd700] flex items-center gap-2">
-                <Trophy className="w-3 h-3" />Leaderboard
+                <Trophy className="w-3 h-3" />Ranking Leaderboard
               </CardTitle>
             </CardHeader>
             <CardContent className="px-4 pb-3">
-              <ScrollArea className="max-h-80">
+              <ScrollArea className="max-h-[340px]">
                 {highScores.length === 0 ? (
-                  <p className="text-white/30 font-mono text-xs text-center py-4">No scores yet!</p>
+                  <p className="text-white/30 font-mono text-xs text-center py-6">No scores yet! Be the first.</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     {highScores.map((entry, i) => (
-                      <div key={i} className={`flex items-center justify-between py-1.5 px-2 rounded ${i === 0 ? 'bg-[#ffd700]/10 border border-[#ffd700]/20' : i === 1 ? 'bg-white/5 border border-white/10' : i === 2 ? 'bg-[#ff6ec7]/5 border border-[#ff6ec7]/10' : 'bg-white/[0.02]'}`}>
+                      <div key={`${entry.time}-${i}`} className={`flex items-center justify-between py-1.5 px-2 rounded-lg transition-colors ${i === 0 ? 'bg-[#ffd700]/10 border border-[#ffd700]/20' : i === 1 ? 'bg-white/5 border border-white/10' : i === 2 ? 'bg-[#ff6ec7]/5 border border-[#ff6ec7]/10' : 'bg-white/[0.02] hover:bg-white/[0.04]'}`}>
                         <div className="flex items-center gap-2 min-w-0">
-                          <span className={`font-mono text-xs font-bold w-5 text-center flex-shrink-0 ${i === 0 ? 'text-[#ffd700]' : i === 1 ? 'text-white/60' : i === 2 ? 'text-[#ff6ec7]' : 'text-white/30'}`}>{i + 1}</span>
-                          <img src={`/characters/char${((entry.characterId - 1) % 8) + 1}.jpg`} alt="" className="w-6 h-6 rounded flex-shrink-0 object-cover" />
+                          <div className="flex-shrink-0 w-4 flex justify-center">{getRankIcon(i)}</div>
+                          <img
+                            src={getCharImgSrc(entry)}
+                            alt=""
+                            className="w-6 h-6 rounded flex-shrink-0 object-cover border border-white/10"
+                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                          />
                           <div className="min-w-0">
-                            <div className="font-mono text-[10px] text-white/50 truncate">{entry.characterName}</div>
-                            <div className="font-mono text-[9px] text-white/30 truncate">{entry.address.slice(0, 6)}...{entry.address.slice(-4)}</div>
+                            <div className="font-mono text-[10px] text-white/70 truncate font-bold">{entry.characterName}</div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-mono text-[8px] text-white/25 truncate max-w-[80px]">{entry.address.slice(0, 6)}...{entry.address.slice(-4)}</span>
+                              {entry.rarity && (
+                                <span className="font-mono text-[7px] px-1 rounded" style={{ color: RARITY_COLORS[entry.rarity as keyof typeof RARITY_COLORS] || '#00ffaa', backgroundColor: (RARITY_COLORS[entry.rarity as keyof typeof RARITY_COLORS] || '#00ffaa') + '15' }}>
+                                  {entry.rarity}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         </div>
-                        <span className="font-mono text-xs font-bold text-[#ffd700] flex-shrink-0">{entry.score.toLocaleString()}</span>
+                        <div className="flex flex-col items-end flex-shrink-0">
+                          <span className="font-mono text-xs font-bold text-[#ffd700]">{entry.score.toLocaleString()}</span>
+                          {entry.abilityName && (
+                            <span className="font-mono text-[8px] text-white/25">{entry.abilityName}</span>
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -423,7 +539,7 @@ export default function RitualGame() {
             </CardContent>
           </Card>
 
-          {/* On-chain */}
+          {/* On-chain submit */}
           {gamePhase === 'gameover' && wallet.isConnected && wallet.isCorrectNetwork && (
             <Card className="bg-[#0f0f2f] border-[#ffd700]/20">
               <CardContent className="p-4">
@@ -449,8 +565,8 @@ export default function RitualGame() {
         </div>
       </main>
 
-      <footer className="relative z-10 w-full max-w-5xl mx-auto px-4 py-3 flex items-center justify-center text-white/20 font-mono text-xs">
-        Built on Ritual Testnet &middot; Powered by MetaMask
+      <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 py-3 flex items-center justify-center text-white/20 font-mono text-xs">
+        Built on Ritual Testnet &middot; Powered by MetaMask &middot; 10 Characters &middot; 8 Unique Abilities
       </footer>
     </div>
   );

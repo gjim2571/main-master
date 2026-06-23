@@ -23,7 +23,7 @@ export const ABILITY_DOUBLE_JUMP_PLUS: CharacterAbility = {
 export const ABILITY_SPEED_BOOST: CharacterAbility = {
   id: 'speed_boost',
   name: 'Overclock',
-  description: '1.5× movement speed',
+  description: '1.5x movement speed',
   icon: '⚡',
   color: '#ffdd00',
 };
@@ -55,7 +55,7 @@ export const ABILITY_LOW_GRAVITY: CharacterAbility = {
 export const ABILITY_SUPER_BOUNCE: CharacterAbility = {
   id: 'super_bounce',
   name: 'Spring Loaded',
-  description: '1.5× force from bounce pads',
+  description: '1.5x force from bounce pads',
   icon: '🔵',
   color: '#00ff66',
 };
@@ -71,7 +71,7 @@ export const ABILITY_TINY_HITBOX: CharacterAbility = {
 export const ABILITY_SCORE_MULTIPLIER: CharacterAbility = {
   id: 'score_multiplier',
   name: 'Jackpot',
-  description: '1.5× score from all sources',
+  description: '1.5x score from all sources',
   icon: '💰',
   color: '#ffd700',
 };
@@ -86,6 +86,60 @@ export const ALL_ABILITIES: CharacterAbility[] = [
   ABILITY_TINY_HITBOX,
   ABILITY_SCORE_MULTIPLIER,
 ];
+
+// ---------------------------------------------------------------------------
+// Random Name Generator
+// ---------------------------------------------------------------------------
+
+const NAME_PREFIXES = [
+  'Neon', 'Cyber', 'Void', 'Pixel', 'Chain', 'Ghost', 'Byte', 'Star',
+  'Nova', 'Flux', 'Zero', 'Neo', 'Arc', 'Blaze', 'Frost', 'Storm',
+  'Shadow', 'Lunar', 'Solar', 'Quantum', 'Omega', 'Alpha', 'Hyper', 'Mega',
+  'Turbo', 'Phantom', 'Crystal', 'Dark', 'Rogue', 'Zen', 'Echo', 'Pulse',
+  'Glitch', 'Holo', 'Prism', 'Orbit', 'Dusk', 'Rift', 'Surge', 'Nexus',
+  'Apex', 'Viper', 'Hawk', 'Wolf', 'Drake', 'Rex', 'Fang', 'Claw',
+];
+
+const NAME_SUFFIXES = [
+  'Blade', 'Fox', 'Walker', 'Storm', 'Breaker', 'Node', 'Wolf', 'Forge',
+  'Runner', 'Rider', 'Hunter', 'Knight', 'Mage', 'Master', 'Spark', 'Hacker',
+  'Strike', 'Bolt', 'Wave', 'Drift', 'Fury', 'Core', 'Link', 'Bit',
+  'Shift', 'Pulse', 'Craft', 'Mesh', 'Grid', 'Warp', 'Dash', 'Rush',
+  'Sage', 'Warden', 'Sentinel', 'Cipher', 'Adept', 'Pioneer', 'Legend', 'Titan',
+  'Nova', 'Zenith', 'Vortex', 'Blitz', 'Reaper', 'Raven', 'Phoenix', 'Dragon',
+];
+
+let nameCounter = 0;
+
+/**
+ * Generate a random character name by combining a prefix and suffix.
+ * Uses a counter to avoid duplicates within a single session.
+ */
+export function generateRandomName(): string {
+  let name = '';
+  let attempts = 0;
+  do {
+    const prefix = NAME_PREFIXES[Math.floor(Math.random() * NAME_PREFIXES.length)];
+    const suffix = NAME_SUFFIXES[Math.floor(Math.random() * NAME_SUFFIXES.length)];
+    name = prefix + suffix;
+    attempts++;
+  } while (attempts < 20 && _usedNames.has(name.toLowerCase()));
+  _usedNames.add(name.toLowerCase());
+  nameCounter++;
+  // Occasionally add a number suffix for variety
+  if (Math.random() < 0.15) {
+    name += Math.floor(Math.random() * 99) + 1;
+  }
+  return name;
+}
+
+const _usedNames = new Set<string>();
+
+/** Reset used names (call when generating a new batch) */
+export function resetUsedNames(): void {
+  _usedNames.clear();
+  nameCounter = 0;
+}
 
 // ---------------------------------------------------------------------------
 // Character & Rarity
@@ -114,90 +168,87 @@ export const RARITY_LABELS: Record<Rarity, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Full Character Roster
+// Character Image Pool (10 characters: 8 from chars folder + 2 original arts)
 // ---------------------------------------------------------------------------
 
-export const ALL_CHARACTERS: GameCharacter[] = [
-  {
-    id: 1,
-    name: 'NeonBlade',
-    imageSrc: '/characters/char1.jpg',
-    ability: ABILITY_DOUBLE_JUMP_PLUS,
-    rarity: 'common',
-  },
-  {
-    id: 2,
-    name: 'CryptoFox',
-    imageSrc: '/characters/char2.jpg',
-    ability: ABILITY_SPEED_BOOST,
-    rarity: 'rare',
-  },
-  {
-    id: 3,
-    name: 'VoidWalker',
-    imageSrc: '/characters/char3.jpg',
-    ability: ABILITY_SHIELD,
-    rarity: 'legendary',
-  },
-  {
-    id: 4,
-    name: 'PixelStorm',
-    imageSrc: '/characters/char4.jpg',
-    ability: ABILITY_COIN_MAGNET,
-    rarity: 'common',
-  },
-  {
-    id: 5,
-    name: 'ChainBreaker',
-    imageSrc: '/characters/char5.jpg',
-    ability: ABILITY_LOW_GRAVITY,
-    rarity: 'rare',
-  },
-  {
-    id: 6,
-    name: 'GhostNode',
-    imageSrc: '/characters/char6.jpg',
-    ability: ABILITY_SUPER_BOUNCE,
-    rarity: 'common',
-  },
-  {
-    id: 7,
-    name: 'ByteWolf',
-    imageSrc: '/characters/char7.jpg',
-    ability: ABILITY_TINY_HITBOX,
-    rarity: 'rare',
-  },
-  {
-    id: 8,
-    name: 'StarForge',
-    imageSrc: '/characters/char8.jpg',
-    ability: ABILITY_SCORE_MULTIPLIER,
-    rarity: 'legendary',
-  },
+const CHARACTER_IMAGE_SOURCES = [
+  '/characters/char1.jpg',
+  '/characters/char2.jpg',
+  '/characters/char3.jpg',
+  '/characters/char4.jpg',
+  '/characters/char5.jpg',
+  '/characters/char6.jpg',
+  '/characters/char7.jpg',
+  '/characters/char8.jpg',
+  '/character-art.jpeg',     // Original anime character image
+  '/ritual-logo-art.jpeg',   // Original ritual logo art
 ];
+
+// ---------------------------------------------------------------------------
+// Generate Characters with Random Names & Random Abilities
+// ---------------------------------------------------------------------------
+
+/**
+ * Generate a roster of characters with randomized names and abilities.
+ * Each call produces a fresh set — no two sessions look the same.
+ * The two original images always get 'legendary' rarity.
+ */
+export function generateCharacterRoster(count: number = 10): GameCharacter[] {
+  resetUsedNames();
+
+  const characters: GameCharacter[] = [];
+  const shuffledAbilities = [...ALL_ABILITIES].sort(() => Math.random() - 0.5);
+  const shuffledImages = [...CHARACTER_IMAGE_SOURCES].sort(() => Math.random() - 0.5);
+
+  const actualCount = Math.min(count, shuffledImages.length);
+
+  for (let i = 0; i < actualCount; i++) {
+    const imgSrc = shuffledImages[i];
+    const isOriginal = imgSrc === '/character-art.jpeg' || imgSrc === '/ritual-logo-art.jpeg';
+
+    // Random rarity with weighted distribution
+    let rarity: Rarity;
+    if (isOriginal) {
+      rarity = 'legendary';
+    } else {
+      const roll = Math.random();
+      rarity = roll < 0.12 ? 'legendary' : roll < 0.35 ? 'rare' : 'common';
+    }
+
+    // Assign ability — legendary characters get a random ability, others too
+    const ability = shuffledAbilities[i % shuffledAbilities.length];
+
+    characters.push({
+      id: i + 1,
+      name: generateRandomName(),
+      imageSrc: imgSrc,
+      ability,
+      rarity,
+    });
+  }
+
+  return characters;
+}
+
+// Legacy export for backward compat — not used in new flow
+export const ALL_CHARACTERS: GameCharacter[] = generateCharacterRoster(10);
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Returns a shuffled selection of `count` random characters from the roster.
- * If `count` exceeds the roster size the full (shuffled) roster is returned.
+ * Returns a shuffled selection of `count` characters from a NEWLY GENERATED roster.
+ * This ensures fresh random names + abilities every time.
  */
 export function getRandomCharacters(count: number): GameCharacter[] {
-  const shuffled = [...ALL_CHARACTERS].sort(() => Math.random() - 0.5);
-  return shuffled.slice(0, Math.min(count, shuffled.length));
+  const roster = generateCharacterRoster(count);
+  return roster.sort(() => Math.random() - 0.5).slice(0, Math.min(count, roster.length));
 }
 
 /**
  * Mutates `state` to apply the immediate, state-level effects of a character's
- * ability.  Abilities whose effects are handled entirely inside the game engine
- * (speed, gravity, coin magnet, bounce force, score multiplier) are no-ops here.
- *
- * NOTE for Shield: this module cannot add `shieldActive` to the `Player`
- * interface defined in gameTypes.ts.  The game engine should check for the
- * ability id `'shield'` on the selected character and manage the shield flag
- * itself.
+ * ability.
  */
 export function applyAbilityToState(
   state: GameState,
@@ -206,7 +257,6 @@ export function applyAbilityToState(
   const { player } = state;
 
   switch (character.ability.id) {
-    // ── Abilities applied here ────────────────────────────────────────────
     case 'double_jump_plus':
       player.maxJumps = 3;
       player.jumpsLeft = 3;
@@ -217,24 +267,27 @@ export function applyAbilityToState(
       player.height = 32;
       break;
 
-    // ── Shield: handled by the game engine ─────────────────────────────────
-    // The engine should inspect `character.ability.id === 'shield'` and set
-    // its own `shieldActive` flag on the player to absorb one lethal hit.
     case 'shield':
-      // No direct state mutation possible without extending Player.
-      // Intentional no-op — see comment above.
+      player.shieldActive = true;
       break;
 
-    // ── Abilities handled entirely in the game engine ─────────────────────
-    case 'speed_boost':       // engine: PLAYER_SPEED * 1.5
-    case 'coin_magnet':       // engine: auto-collect within 80 px
-    case 'low_gravity':       // engine: gravity = 0.35 instead of 0.55
-    case 'super_bounce':      // engine: bounceForce * 1.5
-    case 'score_multiplier':  // engine: score * 1.5 on every gain
-      // No initial state mutation needed.
+    // Abilities handled entirely in the game engine:
+    case 'speed_boost':
+    case 'coin_magnet':
+    case 'low_gravity':
+    case 'super_bounce':
+    case 'score_multiplier':
       break;
 
     default:
       break;
   }
+}
+
+/**
+ * Get character image source by ID from a character list
+ */
+export function getCharacterImageSrc(characters: GameCharacter[], charId: number): string {
+  const ch = characters.find(c => c.id === charId);
+  return ch?.imageSrc || '/characters/char1.jpg';
 }

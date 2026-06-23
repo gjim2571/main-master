@@ -11,12 +11,12 @@ import {
   COLORS,
   spawnParticles,
 } from './gameTypes';
-import { GameCharacter, RARITY_COLORS, ALL_CHARACTERS } from './characters';
+import { GameCharacter, RARITY_COLORS } from './characters';
 
-/** Get the currently selected character from state */
-function getSelectedCharacter(state: GameState): GameCharacter | undefined {
+/** Get the currently selected character from the provided list */
+function getSelectedCharacterFromList(state: GameState, characters: GameCharacter[]): GameCharacter | undefined {
   if (state.selectedCharacterId === 0) return undefined;
-  return ALL_CHARACTERS.find(c => c.id === state.selectedCharacterId);
+  return characters.find(c => c.id === state.selectedCharacterId);
 }
 
 // Shared input state - use a plain object to avoid TypeScript issues
@@ -87,13 +87,26 @@ function aabbCollision(ax: number, ay: number, aw: number, ah: number, bx: numbe
   return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
 }
 
+// Active character list (set during character selection)
+let _currentCharacters: GameCharacter[] = [];
+
+/** Set the active character list for ability lookups */
+export function setActiveCharacters(chars: GameCharacter[]) {
+  _currentCharacters = chars;
+}
+
+/** Get the active character list */
+export function getActiveCharacters(): GameCharacter[] {
+  return _currentCharacters;
+}
+
 export function updateGame(state: GameState) {
   if (state.phase !== 'playing') return;
   if (!state.player.isAlive) return;
 
   const { player } = state;
   const dt = 1; // Fixed timestep for stability
-  const char = getSelectedCharacter(state);
+  const char = getSelectedCharacterFromList(state, _currentCharacters);
   const abilityId = char?.ability.id;
 
   // === Player Input ===
@@ -820,63 +833,149 @@ export function drawStartScreen(ctx: CanvasRenderingContext2D, time: number, wal
 
 // === GAME OVER SCREEN ===
 export function drawGameOver(ctx: CanvasRenderingContext2D, state: GameState, time: number, walletAddress: string | null) {
-  ctx.fillStyle = 'rgba(10, 10, 30, 0.85)';
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.88)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
   ctx.textAlign = 'center';
 
   ctx.shadowColor = COLORS.neonPink;
   ctx.shadowBlur = 20;
   ctx.fillStyle = COLORS.neonPink;
-  ctx.font = 'bold 38px monospace';
-  ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 100);
+  ctx.font = 'bold 36px monospace';
+  ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, 55);
   ctx.shadowBlur = 0;
 
+  // Character info panel
+  const char = getSelectedCharacterFromList(state, _currentCharacters);
+  if (char) {
+    const panelX = CANVAS_WIDTH / 2 - 160;
+    const panelY = 68;
+    const panelW = 320;
+    const panelH = 75;
+
+    ctx.fillStyle = 'rgba(20, 20, 50, 0.85)';
+    ctx.strokeStyle = (char.ability.color || RARITY_COLORS[char.rarity]) + '60';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(panelX, panelY, panelW, panelH, 10); ctx.fill(); ctx.stroke();
+
+    // Character avatar
+    if (state.selectedCharacterImg && state.selectedCharacterImg.complete) {
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(panelX + 10, panelY + 8, 56, 56, 8); ctx.clip();
+      ctx.drawImage(state.selectedCharacterImg, panelX + 10, panelY + 8, 56, 56);
+      ctx.restore();
+    }
+
+    // Name + rarity + ability
+    const textX = panelX + 78;
+    ctx.textAlign = 'left';
+    ctx.fillStyle = RARITY_COLORS[char.rarity];
+    ctx.font = 'bold 9px monospace';
+    ctx.fillText(char.rarity.toUpperCase(), textX, panelY + 22);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 14px monospace';
+    ctx.fillText(char.name, textX, panelY + 40);
+    ctx.fillStyle = char.ability.color;
+    ctx.font = '11px monospace';
+    ctx.fillText(`${char.ability.icon} ${char.ability.name}`, textX, panelY + 58);
+    ctx.fillStyle = 'rgba(255,255,255,0.45)';
+    ctx.font = '10px monospace';
+    ctx.fillText(char.ability.description, textX + 140, panelY + 58);
+    ctx.textAlign = 'center';
+  }
+
+  // Score
   ctx.fillStyle = COLORS.neonYellow;
-  ctx.font = 'bold 16px monospace';
-  ctx.fillText('FINAL SCORE', CANVAS_WIDTH / 2, 160);
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('FINAL SCORE', CANVAS_WIDTH / 2, 170);
 
   ctx.fillStyle = COLORS.text;
-  ctx.font = 'bold 32px monospace';
-  ctx.fillText(state.score.toString(), CANVAS_WIDTH / 2, 200);
+  ctx.font = 'bold 30px monospace';
+  ctx.shadowColor = COLORS.neonYellow;
+  ctx.shadowBlur = 10;
+  ctx.fillText(state.score.toString(), CANVAS_WIDTH / 2, 205);
+  ctx.shadowBlur = 0;
 
   ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
-  ctx.font = '13px monospace';
-  ctx.fillText(`Distance: ${state.distance}m`, CANVAS_WIDTH / 2, 240);
-  ctx.fillText(`Coins: ${state.coins.filter(c => c.collected).length}`, CANVAS_WIDTH / 2, 265);
+  ctx.font = '12px monospace';
+  const collectedCoins = state.coins.filter(c => c.collected).length;
+  const totalCoins = state.coins.length;
+  ctx.fillText(`Distance: ${state.distance}m`, CANVAS_WIDTH / 2 - 100, 240);
+  ctx.fillText(`Coins: ${collectedCoins}/${totalCoins}`, CANVAS_WIDTH / 2 + 100, 240);
+
+  // Ranking display
+  ctx.fillStyle = 'rgba(20, 20, 50, 0.8)';
+  ctx.strokeStyle = COLORS.neonYellow + '40';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.roundRect(CANVAS_WIDTH / 2 - 150, 260, 300, 130, 10); ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle = COLORS.neonYellow;
+  ctx.font = 'bold 12px monospace';
+  ctx.fillText('TOP 5 RANKING', CANVAS_WIDTH / 2, 282);
+
+  // Draw top 5 from localStorage
+  try {
+    const saved = localStorage.getItem('ritual-game-scores');
+    const scores = saved ? JSON.parse(saved).slice(0, 5) : [];
+    if (scores.length === 0) {
+      ctx.fillStyle = 'rgba(255,255,255,0.3)';
+      ctx.font = '11px monospace';
+      ctx.fillText('No scores yet - be the first!', CANVAS_WIDTH / 2, 320);
+    } else {
+      const medals = ['1st', '2nd', '3rd', '4th', '5th'];
+      const medalColors = ['#ffd700', '#c0c0c0', '#cd7f32', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.25)'];
+      scores.forEach((entry: { score: number; characterName: string; characterId: number }, i: number) => {
+        const y = 302 + i * 18;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = medalColors[i];
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText(medals[i], CANVAS_WIDTH / 2 - 120, y);
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '10px monospace';
+        const nameTrunc = entry.characterName.length > 12 ? entry.characterName.slice(0, 12) + '..' : entry.characterName;
+        ctx.fillText(nameTrunc, CANVAS_WIDTH / 2 - 80, y);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = COLORS.neonYellow;
+        ctx.font = 'bold 10px monospace';
+        ctx.fillText(entry.score.toLocaleString(), CANVAS_WIDTH / 2 + 130, y);
+      });
+    }
+  } catch {
+    // ignore
+  }
+  ctx.textAlign = 'center';
 
   // On-chain status
   if (walletAddress && !state.onChainScoreSubmitted && !state.pendingSubmission) {
     ctx.fillStyle = COLORS.neonYellow;
-    ctx.font = '13px monospace';
-    ctx.fillText('Press S to submit score on-chain!', CANVAS_WIDTH / 2, 330);
+    ctx.font = '12px monospace';
+    ctx.fillText('Press S to submit score on-chain!', CANVAS_WIDTH / 2, 415);
   } else if (state.pendingSubmission) {
     ctx.fillStyle = COLORS.neonBlue;
-    ctx.font = '13px monospace';
+    ctx.font = '12px monospace';
     const dots = '.'.repeat(Math.floor(time / 400) % 4);
-    ctx.fillText(`Submitting to Ritual Testnet${dots}`, CANVAS_WIDTH / 2, 330);
+    ctx.fillText(`Submitting to Ritual Testnet${dots}`, CANVAS_WIDTH / 2, 415);
   } else if (state.onChainScoreSubmitted) {
     ctx.fillStyle = COLORS.neonGreen;
-    ctx.font = '13px monospace';
+    ctx.font = '12px monospace';
     ctx.shadowColor = COLORS.neonGreen;
     ctx.shadowBlur = 10;
-    ctx.fillText('Score Submitted On-Chain!', CANVAS_WIDTH / 2, 330);
+    ctx.fillText('Score Submitted On-Chain!', CANVAS_WIDTH / 2, 415);
     ctx.shadowBlur = 0;
     if (state.lastBlockHash) {
       ctx.fillStyle = 'rgba(255,255,255,0.35)';
       ctx.font = '9px monospace';
-      ctx.fillText('Tx: ' + state.lastBlockHash.slice(0, 22) + '...', CANVAS_WIDTH / 2, 350);
+      ctx.fillText('Tx: ' + state.lastBlockHash.slice(0, 22) + '...', CANVAS_WIDTH / 2, 433);
     }
   }
 
   // Restart
   const pulse = 0.92 + 0.08 * Math.sin(time / 400);
   ctx.save();
-  ctx.translate(CANVAS_WIDTH / 2, 420);
+  ctx.translate(CANVAS_WIDTH / 2, 470);
   ctx.scale(pulse, pulse);
   ctx.fillStyle = COLORS.text;
-  ctx.font = 'bold 16px monospace';
-  ctx.fillText('Press ENTER to Restart', 0, 0);
+  ctx.font = 'bold 14px monospace';
+  ctx.fillText('Press ENTER to Play Again', 0, 0);
   ctx.restore();
 
   ctx.textAlign = 'left';
@@ -890,7 +989,7 @@ export function drawCharacterSelect(
   characterImgs: Map<number, HTMLImageElement>,
   selectedIndex: number
 ) {
-  ctx.fillStyle = 'rgba(10, 10, 30, 0.9)';
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.92)';
   ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
   ctx.textAlign = 'center';
 
@@ -898,22 +997,25 @@ export function drawCharacterSelect(
   ctx.shadowColor = COLORS.neonGreen;
   ctx.shadowBlur = 15;
   ctx.fillStyle = COLORS.neonGreen;
-  ctx.font = 'bold 28px monospace';
-  ctx.fillText('SELECT YOUR CHARACTER', CANVAS_WIDTH / 2, 40);
+  ctx.font = 'bold 26px monospace';
+  ctx.fillText('SELECT YOUR CHARACTER', CANVAS_WIDTH / 2, 35);
   ctx.shadowBlur = 0;
 
   ctx.fillStyle = 'rgba(255,255,255,0.4)';
-  ctx.font = '11px monospace';
-  ctx.fillText('Each character has a unique special ability!', CANVAS_WIDTH / 2, 60);
+  ctx.font = '10px monospace';
+  ctx.fillText('Random names & abilities each time! Pick wisely.', CANVAS_WIDTH / 2, 52);
 
-  // Character cards: 4 per row, 2 rows
-  const cardW = 170, cardH = 190, gapX = 15, gapY = 12;
-  const startX = (CANVAS_WIDTH - (4 * cardW + 3 * gapX)) / 2;
-  const startY = 78;
+  // Character cards: 5 per row, 2 rows
+  const count = characters.length;
+  const cols = Math.min(5, count);
+ const rows = Math.ceil(count / cols);
+  const cardW = 145, cardH = 185, gapX = 10, gapY = 8;
+  const startX = (CANVAS_WIDTH - (cols * cardW + (cols - 1) * gapX)) / 2;
+  const startY = 65;
 
-  for (let i = 0; i < characters.length; i++) {
-    const col = i % 4;
-    const row = Math.floor(i / 4);
+  for (let i = 0; i < count; i++) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
     const cx = startX + col * (cardW + gapX);
     const cy = startY + row * (cardH + gapY);
     const ch = characters[i];
@@ -931,44 +1033,67 @@ export function drawCharacterSelect(
       ctx.strokeStyle = COLORS.neonGreen; ctx.lineWidth = 1.5;
       ctx.beginPath(); ctx.roundRect(cx, cy, cardW, cardH, 10); ctx.stroke();
       ctx.shadowBlur = 0;
+
+      // Selection indicator triangle
+      ctx.fillStyle = COLORS.neonGreen;
+      ctx.beginPath();
+      ctx.moveTo(cx + cardW / 2 - 6, cy - 8);
+      ctx.lineTo(cx + cardW / 2 + 6, cy - 8);
+      ctx.lineTo(cx + cardW / 2, cy - 1);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // Image
-    const isz = 80, ix = cx + (cardW - isz) / 2, iy = cy + 10;
+    const isz = 75, ix = cx + (cardW - isz) / 2, iy = cy + 8;
     const img = characterImgs.get(ch.id);
     if (img && img.complete) {
       ctx.save(); ctx.beginPath(); ctx.roundRect(ix, iy, isz, isz, 8); ctx.clip();
       ctx.drawImage(img, ix, iy, isz, isz); ctx.restore();
+    } else {
+      // Placeholder
+      ctx.fillStyle = 'rgba(255,255,255,0.05)';
+      ctx.beginPath(); ctx.roundRect(ix, iy, isz, isz, 8); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.font = '24px monospace';
+      ctx.fillText('?', cx + cardW / 2, iy + isz / 2 + 8);
     }
 
-    // Rarity + name + ability
+    // Rarity badge
+    ctx.fillStyle = rc + '25';
+    ctx.beginPath(); ctx.roundRect(cx + 6, cy + isz + 14, 55, 14, 4); ctx.fill();
     ctx.textAlign = 'left';
-    ctx.fillStyle = rc; ctx.font = 'bold 9px monospace';
-    ctx.fillText(ch.rarity.toUpperCase(), cx + 10, cy + cardH - 38);
+    ctx.fillStyle = rc; ctx.font = 'bold 8px monospace';
+    ctx.fillText(ch.rarity.toUpperCase(), cx + 10, cy + isz + 24);
+
+    // Name
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px monospace';
-    ctx.fillText(ch.name, cx + cardW / 2, cy + cardH - 22);
-    ctx.fillStyle = ch.ability.color; ctx.font = '10px monospace';
-    ctx.fillText(`${ch.ability.icon} ${ch.ability.name}`, cx + cardW / 2, cy + cardH - 8);
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 10px monospace';
+    const displayName = ch.name.length > 14 ? ch.name.slice(0, 13) + '..' : ch.name;
+    ctx.fillText(displayName, cx + cardW / 2, cy + cardH - 30);
+
+    // Ability line
+    ctx.fillStyle = ch.ability.color; ctx.font = '9px monospace';
+    ctx.fillText(`${ch.ability.icon} ${ch.ability.name}`, cx + cardW / 2, cy + cardH - 15);
   }
 
-  // Selected ability description
+  // Selected ability detail panel
   if (characters[selectedIndex]) {
     const s = characters[selectedIndex];
-    const dy = startY + 2 * (cardH + gapY) + 10;
-    ctx.fillStyle = 'rgba(20,20,50,0.8)';
+    const dy = startY + rows * (cardH + gapY) + 5;
+    ctx.fillStyle = 'rgba(20,20,50,0.85)';
     ctx.strokeStyle = s.ability.color + '80'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(CANVAS_WIDTH/2-200, dy, 400, 50, 8); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.roundRect(CANVAS_WIDTH/2-220, dy, 440, 45, 8); ctx.fill(); ctx.stroke();
     ctx.textAlign = 'center';
     ctx.fillStyle = s.ability.color; ctx.font = 'bold 12px monospace';
-    ctx.fillText(`${s.ability.icon} ${s.ability.name}`, CANVAS_WIDTH/2, dy+20);
+    ctx.fillText(`${s.ability.icon} ${s.ability.name}`, CANVAS_WIDTH/2, dy+18);
     ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '11px monospace';
-    ctx.fillText(s.ability.description, CANVAS_WIDTH/2, dy+38);
+    ctx.fillText(s.ability.description, CANVAS_WIDTH/2, dy+35);
   }
 
-  // Hint
+  // Navigation hint
   const p = 0.7 + 0.3 * Math.sin(time / 300);
-  ctx.fillStyle = `rgba(0, 255, 170, ${p})`; ctx.font = 'bold 13px monospace';
-  ctx.fillText('A/D or Arrows to browse  |  ENTER to confirm', CANVAS_WIDTH/2, CANVAS_HEIGHT-20);
+  ctx.fillStyle = `rgba(0, 255, 170, ${p})`; ctx.font = 'bold 12px monospace';
+  ctx.fillText('A/D or Arrows to browse  |  ENTER to confirm', CANVAS_WIDTH/2, CANVAS_HEIGHT-12);
   ctx.textAlign = 'left';
 }
