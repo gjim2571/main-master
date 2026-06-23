@@ -213,7 +213,7 @@ export function createInitialGameState(): GameState {
     score: 0,
     distance: 0,
     level: 1,
-    phase: 'start',
+    phase: 'select',
     backgroundOffset: 0,
     stars: createStars(200),
     floatingArts: createFloatingArts(8),

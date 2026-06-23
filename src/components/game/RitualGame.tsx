@@ -23,7 +23,6 @@ import {
   updateGame,
   drawGame,
   drawHUD,
-  drawStartScreen,
   drawGameOver,
   drawCharacterSelect,
   setActiveCharacters,
@@ -34,7 +33,7 @@ import {
   RARITY_COLORS,
   GameCharacter,
 } from '@/lib/characters';
-import { Wallet, Unplug, RotateCcw, Trophy, Zap, Info, Crown, Medal, Star } from 'lucide-react';
+import { Wallet, Unplug, RotateCcw, Trophy, Zap, Crown, Medal, Star } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -59,13 +58,13 @@ export default function RitualGame() {
   const cleanupRef = useRef<(() => void) | null>(null);
   const assetsRef = useRef<GameAssets>({ characterImg: null, ritualLogoImg: null });
   const uiUpdateTimerRef = useRef<number>(0);
-  const lastPhaseRef = useRef<GamePhase>('start');
+  const lastPhaseRef = useRef<GamePhase>('select');
   const charSelectIndexRef = useRef(0);
   const displayCharsRef = useRef<GameCharacter[]>(getRandomCharacters(CHARACTER_COUNT));
   const charImgsRef = useRef<Map<number, HTMLImageElement>>(new Map());
   const lastSelectedCharRef = useRef<GameCharacter | null>(null);
 
-  const [gamePhase, setGamePhase] = useState<GamePhase>('start');
+  const [gamePhase, setGamePhase] = useState<GamePhase>('select');
   const [chainSubmitted, setChainSubmitted] = useState(false);
   const [chainPending, setChainPending] = useState(false);
   const [chainTxHash, setChainTxHash] = useState('');
@@ -203,23 +202,7 @@ export default function RitualGame() {
       const w = walletRef.current;
       const charCount = displayCharsRef.current.length;
 
-      if (state.phase === 'start') {
-        if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          const newChars = getRandomCharacters(CHARACTER_COUNT);
-          displayCharsRef.current = newChars;
-          charSelectIndexRef.current = 0;
-          newChars.forEach(ch => {
-            if (!charImgsRef.current.has(ch.id)) {
-              const img = new Image();
-              img.src = ch.imageSrc;
-              img.onload = () => { charImgsRef.current.set(ch.id, img); };
-              charImgsRef.current.set(ch.id, img);
-            }
-          });
-          state.phase = 'select';
-          setGamePhase('select');
-        }
-      } else if (state.phase === 'select') {
+      if (state.phase === 'select') {
         if (selectBrowseCooldown > 0) selectBrowseCooldown--;
         if (selectBrowseCooldown === 0) {
           if (wasJustPressed('ArrowLeft') || wasJustPressed('KeyA')) {
@@ -247,8 +230,17 @@ export default function RitualGame() {
               charImgsRef.current.set(ch.id, img);
             }
           });
-          resetGameForPlaying(state);
+          // Reset state but go to select (not playing)
+          const { stars, floatingArts, onChainScoreSubmitted, pendingSubmission, lastBlockHash } = state;
+          Object.assign(state, createInitialGameState());
+          state.stars = stars;
+          state.floatingArts = floatingArts;
+          state.onChainScoreSubmitted = onChainScoreSubmitted;
+          state.pendingSubmission = pendingSubmission;
+          state.lastBlockHash = lastBlockHash;
           state.phase = 'select';
+          generateLevel(state);
+          setActiveCharacters(newChars);
           setGamePhase('select');
         }
         if (wasJustPressed('KeyS') && w.isConnected) {
@@ -283,13 +275,10 @@ export default function RitualGame() {
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       const assets = assetsRef.current;
 
-      if (state.phase === 'start') {
-        drawGame(ctx, state, timestamp, assets);
-        drawStartScreen(ctx, timestamp, w.address, assets);
-      } else if (state.phase === 'select') {
+      if (state.phase === 'select') {
         drawGame(ctx, state, timestamp, assets);
         drawCharacterSelect(ctx, timestamp, displayCharsRef.current, charImgsRef.current, charSelectIndexRef.current);
-      } else if (state.phase === 'playing') {
+ } else if (state.phase === 'playing') {
         drawGame(ctx, state, timestamp, assets);
         drawHUD(ctx, state, w.address, w.balance);
       } else if (state.phase === 'gameover') {
@@ -321,7 +310,7 @@ export default function RitualGame() {
   const mobileConfirm = () => {
     if (gameStateRef.current.phase === 'select') {
       confirmCharacterAndStart();
-    } else if (gameStateRef.current.phase === 'start' || gameStateRef.current.phase === 'gameover') {
+    } else if (gameStateRef.current.phase === 'gameover') {
       startGame();
     }
   };
@@ -434,8 +423,8 @@ export default function RitualGame() {
             </div>
           )}
 
-          {/* Mobile start/restart */}
-          {(gamePhase === 'start' || gamePhase === 'gameover') && (
+          {/* Mobile restart (gameover only) */}
+          {gamePhase === 'gameover' && (
             <button onClick={startGame} className="mt-3 px-6 py-2 bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm rounded-lg hover:bg-[#00ffaa]/90 transition-colors shadow-[0_0_15px_rgba(0,255,170,0.3)] lg:hidden">
               {gamePhase === 'gameover' ? 'Play Again' : 'Start Game'}
             </button>
