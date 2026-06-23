@@ -295,36 +295,30 @@ export default function RitualGame() {
     if (!selected) return;
 
     // Load the image
+    // Start game immediately — don't block on image loading
+    resetGameForPlaying(state);
+    state.selectedCharacterId = selected.id;
+    applyAbilityToState(state, selected);
+    setActiveCharacters(chars);
+    lastSelectedCharRef.current = selected;
+    setSelectedCharName(selected.name);
+    setSelectedCharAbility(selected.ability.name);
+    setSelectedCharRarity(selected.rarity);
+    setDisplayScore(0);
+    setDisplayDistance(0);
+    setDisplayCoins(0);
+    setChainSubmitted(false);
+    setChainPending(false);
+    setChainTxHash('');
+    setGamePhase('playing');
+
+    // Load character image asynchronously (update sprite when ready)
     const img = new Image();
     img.src = selected.imageSrc;
-
-    const startPlaying = () => {
-      resetGameForPlaying(state);
-      state.selectedCharacterId = selected.id;
-      state.selectedCharacterImg = img.complete ? img : null;
-      applyAbilityToState(state, selected);
-      setActiveCharacters(chars);
-      lastSelectedCharRef.current = selected;
-      setSelectedCharName(selected.name);
-      setSelectedCharAbility(selected.ability.name);
-      setSelectedCharRarity(selected.rarity);
-      setDisplayScore(0);
-      setDisplayDistance(0);
-      setDisplayCoins(0);
-      setChainSubmitted(false);
-      setChainPending(false);
-      setChainTxHash('');
-      setGamePhase('playing');
-    };
-
-    if (img.complete) {
-      startPlaying();
+    if (img.complete && img.naturalWidth > 0) {
+      state.selectedCharacterImg = img;
     } else {
-      img.onload = () => {
-        state.selectedCharacterImg = img;
-        startPlaying();
-      };
-      img.onerror = () => startPlaying();
+      img.onload = () => { state.selectedCharacterImg = img; };
     }
   }, []);
 
