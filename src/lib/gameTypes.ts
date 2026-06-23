@@ -22,6 +22,7 @@ export interface Player {
   facing: 'left' | 'right';
   animFrame: number;
   animTimer: number;
+  shieldActive: boolean;
 }
 
 export interface Platform {
@@ -90,7 +91,7 @@ export interface GameAssets {
   ritualLogoImg: HTMLImageElement | null;
 }
 
-export type GamePhase = 'start' | 'playing' | 'gameover';
+export type GamePhase = 'start' | 'select' | 'playing' | 'gameover';
 
 export interface GameState {
   player: Player;
@@ -110,6 +111,9 @@ export interface GameState {
   onChainScoreSubmitted: boolean;
   pendingSubmission: boolean;
   lastBlockHash: string;
+  // Character
+  selectedCharacterId: number;
+  selectedCharacterImg: HTMLImageElement | null;
 }
 
 export const GRAVITY = 0.55;
@@ -199,6 +203,7 @@ export function createInitialGameState(): GameState {
       facing: 'right',
       animFrame: 0,
       animTimer: 0,
+      shieldActive: false,
     },
     platforms: [],
     coins: [],
@@ -215,6 +220,8 @@ export function createInitialGameState(): GameState {
     onChainScoreSubmitted: false,
     pendingSubmission: false,
     lastBlockHash: '',
+    selectedCharacterId: 0,
+    selectedCharacterImg: null,
   };
 }
 

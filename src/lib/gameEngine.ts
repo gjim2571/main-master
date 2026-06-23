@@ -11,6 +11,13 @@ import {
   COLORS,
   spawnParticles,
 } from './gameTypes';
+import { GameCharacter, RARITY_COLORS, ALL_CHARACTERS } from './characters';
+
+/** Get the currently selected character from state */
+function getSelectedCharacter(state: GameState): GameCharacter | undefined {
+  if (state.selectedCharacterId === 0) return undefined;
+  return ALL_CHARACTERS.find(c => c.id === state.selectedCharacterId);
+}
 
 // Shared input state - use a plain object to avoid TypeScript issues
 export const keys: Record<string, boolean> = {};
@@ -86,13 +93,17 @@ export function updateGame(state: GameState) {
 
   const { player } = state;
   const dt = 1; // Fixed timestep for stability
+  const char = getSelectedCharacter(state);
+  const abilityId = char?.ability.id;
 
   // === Player Input ===
   let moveX = 0;
   if (keys['ArrowLeft'] || keys['KeyA']) moveX -= 1;
   if (keys['ArrowRight'] || keys['KeyD']) moveX += 1;
 
-  player.vx = moveX * PLAYER_SPEED;
+  // Speed boost ability
+  const speed = abilityId === 'speed_boost' ? PLAYER_SPEED * 1.5 : PLAYER_SPEED;
+  player.vx = moveX * speed;
   if (moveX !== 0) {
     player.facing = moveX > 0 ? 'right' : 'left';
   }
@@ -119,7 +130,8 @@ export function updateGame(state: GameState) {
   }
 
   // === Physics ===
-  player.vy += GRAVITY;
+  const gravity = abilityId === 'low_gravity' ? 0.35 : GRAVITY;
+  player.vy += gravity;
   if (player.vy > MAX_FALL_SPEED) player.vy = MAX_FALL_SPEED;
 
   // Move player
@@ -172,7 +184,8 @@ export function updateGame(state: GameState) {
       player.jumpsLeft = player.maxJumps;
 
       if (plat.type === 'bounce' && plat.bounceForce) {
-        player.vy = plat.bounceForce;
+        const bounceMultiplier = abilityId === 'super_bounce' ? 1.5 : 1;
+        player.vy = plat.bounceForce * bounceMultiplier;
         player.jumpsLeft = player.maxJumps;
         spawnParticles(state, player.x + player.width / 2, plat.y, COLORS.neonGreen, 8, 3);
       } else {
@@ -187,6 +200,9 @@ export function updateGame(state: GameState) {
   }
 
   // === Coin Collection ===
+  const magnetRange = abilityId === 'coin_magnet' ? 80 : 0;
+  const scoreMultiplier = abilityId === 'score_multiplier' ? 1.5 : 1;
+
   for (const coin of state.coins) {
     if (coin.collected) continue;
 
@@ -195,9 +211,12 @@ export function updateGame(state: GameState) {
     const dy = (player.y + player.height / 2) - cy;
     const dist = Math.sqrt(dx * dx + dy * dy);
 
-    if (dist < coin.radius + 20) {
+    // Magnet: auto-collect within range
+    const collectDist = magnetRange > 0 && dist < magnetRange ? magnetRange : coin.radius + 20;
+
+    if (dist < collectDist) {
       coin.collected = true;
-      state.score += coin.value;
+      state.score += Math.floor(coin.value * scoreMultiplier);
       const particleColor =
         coin.type === 'legendary' ? COLORS.legendaryCoin : coin.type === 'rare' ? COLORS.rareCoin : COLORS.coin;
       spawnParticles(state, coin.x, coin.y, particleColor, coin.type === 'legendary' ? 15 : 8, 4);
@@ -229,13 +248,19 @@ export function updateGame(state: GameState) {
         // Stomp
         enemy.isAlive = false;
         player.vy = JUMP_FORCE * 0.65;
-        state.score += 50;
+        state.score += Math.floor(50 * scoreMultiplier);
         spawnParticles(state, enemy.x + enemy.width / 2, enemy.y + enemy.height / 2, COLORS.neonPink, 12, 4);
       } else {
-        // Take damage
-        player.isAlive = false;
-        state.phase = 'gameover';
-        spawnParticles(state, player.x + player.width / 2, player.y + player.height / 2, COLORS.neonPink, 20, 6);
+        // Take damage - check shield
+        if (abilityId === 'shield' && player.shieldActive) {
+          player.shieldActive = false;
+          player.invincible = 60;
+          spawnParticles(state, player.x + player.width / 2, player.y + player.height / 2, '#4dc9f6', 15, 5);
+        } else {
+          player.isAlive = false;
+          state.phase = 'gameover';
+          spawnParticles(state, player.x + player.width / 2, player.y + player.height / 2, COLORS.neonPink, 20, 6);
+        }
       }
     }
   }
@@ -426,13 +451,47 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
 
     // Trail
     if (Math.abs(player.vx) > 1 || !player.onGround) {
-      ctx.fillStyle = COLORS.playerTrail;
+      ctx.fillStyle = char?.ability.color ? char.ability.color + '25' : COLORS.playerTrail;
       ctx.beginPath();
       ctx.roundRect(px - 2, py + 4, pw, ph - 4, 4);
       ctx.fill();
     }
 
-    if (assets?.characterImg && assets.characterImg.complete) {
+    if (state.selectedCharacterImg && state.selectedCharacterImg.complete) {
+      // Selected character sprite
+      ctx.save();
+      ctx.shadowColor = char?.ability.color || COLORS.playerGlow;
+      ctx.shadowBlur = 12;
+
+      if (player.facing === 'left') {
+        ctx.translate(px + pw / 2, 0);
+        ctx.scale(-1, 1);
+        ctx.drawImage(state.selectedCharacterImg, -pw / 2 - 2, py - 2, pw + 4, ph + 4);
+      } else {
+        ctx.drawImage(state.selectedCharacterImg, px - 2, py - 2, pw + 4, ph + 4);
+      }
+
+      // Ability aura
+      const auraColor = char?.ability.color || 'rgba(0, 255, 170, 0.2)';
+      const pulseAlpha = 0.12 + 0.08 * Math.sin(time / 300);
+      ctx.strokeStyle = auraColor;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.roundRect(px - 4, py - 4, pw + 8, ph + 8, 8);
+      ctx.stroke();
+
+      // Shield visual
+      if (player.shieldActive) {
+        const shieldAlpha = 0.2 + 0.1 * Math.sin(time / 200);
+        ctx.strokeStyle = `rgba(77, 201, 246, ${shieldAlpha})`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(px + pw / 2, py + ph / 2, pw * 0.8, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    } else if (assets?.characterImg && assets.characterImg.complete) {
       // Character image sprite
       ctx.save();
       ctx.shadowColor = COLORS.playerGlow;
@@ -752,7 +811,7 @@ export function drawStartScreen(ctx: CanvasRenderingContext2D, time: number, wal
   ctx.font = 'bold 17px monospace';
   ctx.shadowColor = COLORS.neonGreen;
   ctx.shadowBlur = 15;
-  ctx.fillText('Press ENTER or SPACE to Start', 0, 0);
+  ctx.fillText('Press ENTER to Select Character', 0, 0);
   ctx.shadowBlur = 0;
   ctx.restore();
 
@@ -820,5 +879,96 @@ export function drawGameOver(ctx: CanvasRenderingContext2D, state: GameState, ti
   ctx.fillText('Press ENTER to Restart', 0, 0);
   ctx.restore();
 
+  ctx.textAlign = 'left';
+}
+
+// === CHARACTER SELECT SCREEN ===
+export function drawCharacterSelect(
+  ctx: CanvasRenderingContext2D,
+  time: number,
+  characters: GameCharacter[],
+  characterImgs: Map<number, HTMLImageElement>,
+  selectedIndex: number
+) {
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.9)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.textAlign = 'center';
+
+  // Title
+  ctx.shadowColor = COLORS.neonGreen;
+  ctx.shadowBlur = 15;
+  ctx.fillStyle = COLORS.neonGreen;
+  ctx.font = 'bold 28px monospace';
+  ctx.fillText('SELECT YOUR CHARACTER', CANVAS_WIDTH / 2, 40);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(255,255,255,0.4)';
+  ctx.font = '11px monospace';
+  ctx.fillText('Each character has a unique special ability!', CANVAS_WIDTH / 2, 60);
+
+  // Character cards: 4 per row, 2 rows
+  const cardW = 170, cardH = 190, gapX = 15, gapY = 12;
+  const startX = (CANVAS_WIDTH - (4 * cardW + 3 * gapX)) / 2;
+  const startY = 78;
+
+  for (let i = 0; i < characters.length; i++) {
+    const col = i % 4;
+    const row = Math.floor(i / 4);
+    const cx = startX + col * (cardW + gapX);
+    const cy = startY + row * (cardH + gapY);
+    const ch = characters[i];
+    const sel = i === selectedIndex;
+    const rc = RARITY_COLORS[ch.rarity];
+
+    // Card bg
+    ctx.fillStyle = sel ? 'rgba(0, 255, 170, 0.12)' : 'rgba(20, 20, 50, 0.8)';
+    ctx.strokeStyle = sel ? COLORS.neonGreen : rc + '60';
+    ctx.lineWidth = sel ? 2.5 : 1;
+    ctx.beginPath(); ctx.roundRect(cx, cy, cardW, cardH, 10); ctx.fill(); ctx.stroke();
+
+    if (sel) {
+      ctx.shadowColor = COLORS.neonGreen; ctx.shadowBlur = 15;
+      ctx.strokeStyle = COLORS.neonGreen; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.roundRect(cx, cy, cardW, cardH, 10); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+
+    // Image
+    const isz = 80, ix = cx + (cardW - isz) / 2, iy = cy + 10;
+    const img = characterImgs.get(ch.id);
+    if (img && img.complete) {
+      ctx.save(); ctx.beginPath(); ctx.roundRect(ix, iy, isz, isz, 8); ctx.clip();
+      ctx.drawImage(img, ix, iy, isz, isz); ctx.restore();
+    }
+
+    // Rarity + name + ability
+    ctx.textAlign = 'left';
+    ctx.fillStyle = rc; ctx.font = 'bold 9px monospace';
+    ctx.fillText(ch.rarity.toUpperCase(), cx + 10, cy + cardH - 38);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffffff'; ctx.font = 'bold 11px monospace';
+    ctx.fillText(ch.name, cx + cardW / 2, cy + cardH - 22);
+    ctx.fillStyle = ch.ability.color; ctx.font = '10px monospace';
+    ctx.fillText(`${ch.ability.icon} ${ch.ability.name}`, cx + cardW / 2, cy + cardH - 8);
+  }
+
+  // Selected ability description
+  if (characters[selectedIndex]) {
+    const s = characters[selectedIndex];
+    const dy = startY + 2 * (cardH + gapY) + 10;
+    ctx.fillStyle = 'rgba(20,20,50,0.8)';
+    ctx.strokeStyle = s.ability.color + '80'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(CANVAS_WIDTH/2-200, dy, 400, 50, 8); ctx.fill(); ctx.stroke();
+    ctx.textAlign = 'center';
+    ctx.fillStyle = s.ability.color; ctx.font = 'bold 12px monospace';
+    ctx.fillText(`${s.ability.icon} ${s.ability.name}`, CANVAS_WIDTH/2, dy+20);
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.font = '11px monospace';
+    ctx.fillText(s.ability.description, CANVAS_WIDTH/2, dy+38);
+  }
+
+  // Hint
+  const p = 0.7 + 0.3 * Math.sin(time / 300);
+  ctx.fillStyle = `rgba(0, 255, 170, ${p})`; ctx.font = 'bold 13px monospace';
+  ctx.fillText('A/D or Arrows to browse  |  ENTER to confirm', CANVAS_WIDTH/2, CANVAS_HEIGHT-20);
   ctx.textAlign = 'left';
 }
