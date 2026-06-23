@@ -24,7 +24,9 @@ import {
   drawGame,
   drawHUD,
   drawGameOver,
+  drawLevelComplete,
   setActiveCharacters,
+  getActiveCharacters,
 } from '@/lib/gameEngine';
 import {
   getRandomCharacters,
@@ -243,7 +245,6 @@ export default function RitualGame() {
 
   const walletRef = useRef({ address: '' as string | null, balance: '' as string, isConnected: false, isCorrectNetwork: false });
   const { wallet, connect, disconnect, switchToRitual } = useWallet();
-  walletRef.current = { address: wallet.address, balance: wallet.balance, isConnected: wallet.isConnected, isCorrectNetwork: wallet.isCorrectNetwork };
 
   const [highScores, setHighScores] = useState<ScoreEntry[]>(() => {
     try {
@@ -324,8 +325,6 @@ export default function RitualGame() {
         startPlaying();
       };
       img.onerror = () => startPlaying();
-      // Start playing immediately even if image not loaded yet
-      startPlaying();
     }
   }, []);
 
@@ -352,6 +351,22 @@ export default function RitualGame() {
     setSelectIndex(index);
   }, []);
 
+  // Store callbacks in refs so the game loop doesn't need to re-run when they change
+  const confirmCharacterAndStartRef = useRef(confirmCharacterAndStart);
+  const submitScoreOnChainRef = useRef(submitScoreOnChain);
+  const saveScoreRef = useRef(saveScore);
+  const refreshCharactersRef = useRef(refreshCharacters);
+  const applyAbilityToStateRef = useRef(applyAbilityToState);
+
+  useEffect(() => {
+    confirmCharacterAndStartRef.current = confirmCharacterAndStart;
+    submitScoreOnChainRef.current = submitScoreOnChain;
+    saveScoreRef.current = saveScore;
+    refreshCharactersRef.current = refreshCharacters;
+    applyAbilityToStateRef.current = applyAbilityToState;
+    walletRef.current = { address: wallet.address, balance: wallet.balance, isConnected: wallet.isConnected, isCorrectNetwork: wallet.isCorrectNetwork };
+  });
+
   // Main game loop (only runs during playing/gameover, not select)
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -366,10 +381,25 @@ export default function RitualGame() {
       const state = gameStateRef.current;
       const w = walletRef.current;
 
-      // Only handle gameover input in canvas loop
+      // Handle character select keyboard input
+      if (state.phase === 'select') {
+        if (wasJustPressed('ArrowLeft') || wasJustPressed('KeyA')) {
+          charSelectIndexRef.current = (charSelectIndexRef.current - 1 + displayCharsRef.current.length) % displayCharsRef.current.length;
+          setSelectIndex(charSelectIndexRef.current);
+        }
+        if (wasJustPressed('ArrowRight') || wasJustPressed('KeyD')) {
+          charSelectIndexRef.current = (charSelectIndexRef.current + 1) % displayCharsRef.current.length;
+          setSelectIndex(charSelectIndexRef.current);
+        }
+        if (wasJustPressed('Enter') || wasJustPressed('Space')) {
+          confirmCharacterAndStartRef.current();
+        }
+      }
+
+      // Handle gameover input in canvas loop
       if (state.phase === 'gameover') {
         if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          const newChars = refreshCharacters();
+          const newChars = refreshCharactersRef.current();
           const { stars, floatingArts, onChainScoreSubmitted, pendingSubmission, lastBlockHash } = state;
           Object.assign(state, createInitialGameState());
           state.stars = stars;
@@ -378,12 +408,34 @@ export default function RitualGame() {
           state.pendingSubmission = pendingSubmission;
           state.lastBlockHash = lastBlockHash;
           state.phase = 'select';
+          charSelectIndexRef.current = 0;
+          setSelectIndex(0);
           generateLevel(state);
           setActiveCharacters(newChars);
           setGamePhase('select');
         }
         if (wasJustPressed('KeyS') && w.isConnected) {
-          submitScoreOnChain();
+          submitScoreOnChainRef.current();
+        }
+      }
+
+      // Handle level complete transition
+      if (state.phase === 'levelcomplete') {
+        if (state.levelCompleteTimer > 0) {
+          state.levelCompleteTimer -= 1;
+        }
+        if (state.levelCompleteTimer <= 0) {
+          // Advance to next level
+          const selectedCharId = state.selectedCharacterId;
+          const selectedCharImg = state.selectedCharacterImg;
+          resetGameForPlaying(state, true);
+          state.selectedCharacterId = selectedCharId;
+          state.selectedCharacterImg = selectedCharImg;
+          const char = getActiveCharacters().find(c => c.id === selectedCharId);
+          if (char) {
+            applyAbilityToStateRef.current(state, char);
+          }
+          setGamePhase('playing');
         }
       }
 
@@ -393,7 +445,7 @@ export default function RitualGame() {
       // Throttled UI sync
       if (timestamp - uiUpdateTimerRef.current > 200) {
         uiUpdateTimerRef.current = timestamp;
-        if (state.phase === 'playing') {
+        if (state.phase === 'playing' || state.phase === 'levelcomplete') {
           setDisplayScore(state.score);
           setDisplayDistance(state.distance);
           setDisplayCoins(state.coins.filter(c => c.collected).length);
@@ -402,7 +454,10 @@ export default function RitualGame() {
           setGamePhase('gameover');
           const charId = state.selectedCharacterId;
           const ch = displayCharsRef.current.find(c => c.id === charId);
-          saveScore(state.score, w.address || '', ch?.name || 'Unknown', charId, ch?.ability.name || '', ch?.rarity || 'common');
+          saveScoreRef.current(state.score, w.address || '', ch?.name || 'Unknown', charId, ch?.ability.name || '', ch?.rarity || 'common');
+        }
+        if (state.phase === 'levelcomplete') {
+          setGamePhase('levelcomplete');
         }
         lastPhaseRef.current = state.phase;
       }
@@ -417,6 +472,9 @@ export default function RitualGame() {
       } else if (state.phase === 'gameover') {
         drawGame(ctx, state, timestamp, assets);
         drawGameOver(ctx, state, timestamp, w.address);
+      } else if (state.phase === 'levelcomplete') {
+        drawGame(ctx, state, timestamp, assets);
+        drawLevelComplete(ctx, state, timestamp);
       } else {
         // select phase: draw a dark background on canvas
         ctx.fillStyle = '#0a0a1a';
@@ -428,8 +486,7 @@ export default function RitualGame() {
 
     animFrameRef.current = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(animFrameRef.current); cleanupRef.current?.(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmCharacterAndStart, submitScoreOnChain, saveScore, refreshCharacters]);
+  }, []);
 
   const getRankIcon = (i: number) => {
     if (i === 0) return <Crown className="w-3 h-3 text-[#ffd700]" />;
@@ -491,7 +548,7 @@ export default function RitualGame() {
       <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-3 flex flex-col lg:flex-row gap-4">
         <div ref={containerRef} className="flex-1 flex flex-col items-center">
           {/* Stats bar (only during playing/gameover) */}
-          {(gamePhase === 'playing' || gamePhase === 'gameover') && (
+          {(gamePhase === 'playing' || gamePhase === 'gameover' || gamePhase === 'levelcomplete') && (
             <div className="w-full flex items-center justify-between mb-2 px-1">
               <div className="flex items-center gap-4">
                 <div className="flex items-center gap-1.5">
@@ -524,6 +581,7 @@ export default function RitualGame() {
             {/* HTML Character Select Overlay */}
             {gamePhase === 'select' && (
               <CharacterSelectOverlay
+                // eslint-disable-next-line react-hooks/refs
                 characters={displayCharsRef.current}
                 selectedIndex={selectIndex}
                 onSelect={handleSelectChar}
@@ -534,12 +592,13 @@ export default function RitualGame() {
 
           {/* Mobile game controls (only during playing) */}
           {gamePhase === 'playing' && (
-            <div className="w-full flex justify-center mt-3 lg:hidden" style={{ touchAction: 'none' }}>
+            <div className="w-full flex justify-between mt-3 lg:hidden" style={{ touchAction: 'none' }}>
               <div className="flex items-center gap-4">
                 <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowLeft'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&larr;</button>
-                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowUp'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-[#00ffaa]/15 border border-[#00ffaa]/40 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/30 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>JUMP</button>
+                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowUp'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&uarr;</button>
                 <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowRight'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&rarr;</button>
               </div>
+              <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('Space'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('Space'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('Space'); }} onContextMenu={(e) => e.preventDefault()} className="w-20 h-20 rounded-2xl bg-[#00ffaa]/15 border-2 border-[#00ffaa]/50 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/30 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>JUMP</button>
             </div>
           )}
 
@@ -555,7 +614,8 @@ export default function RitualGame() {
         {gamePhase !== 'select' && (
           <div className="w-full lg:w-80 flex flex-col gap-3">
             {/* Active Character Info */}
-            {(gamePhase === 'playing' || gamePhase === 'gameover') && lastSelectedCharRef.current && (
+            {/* eslint-disable-next-line react-hooks/refs */}
+            {(gamePhase === 'playing' || gamePhase === 'gameover' || gamePhase === 'levelcomplete') && lastSelectedCharRef.current && (
               <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
                 <CardHeader className="pb-2 pt-3 px-4">
                   <CardTitle className="text-xs font-mono text-[#00ffaa] flex items-center gap-2">
@@ -565,6 +625,7 @@ export default function RitualGame() {
                 <CardContent className="px-4 pb-3">
                   <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
+                      {/* eslint-disable-next-line react-hooks/refs */}
                       <img src={lastSelectedCharRef.current.imageSrc} alt="" className="w-full h-full object-cover" />
                     </div>
                     <div className="min-w-0">
@@ -596,6 +657,7 @@ export default function RitualGame() {
                     <p className="text-white/30 font-mono text-xs text-center py-6">No scores yet! Be the first.</p>
                   ) : (
                     <div className="space-y-1.5">
+                      {/* eslint-disable-next-line react-hooks/refs */}
                       {highScores.map((entry, i) => (
                         <div key={`${entry.time}-${i}`} className={`flex items-center justify-between py-1.5 px-2 rounded-lg transition-colors ${i === 0 ? 'bg-[#ffd700]/10 border border-[#ffd700]/20' : i === 1 ? 'bg-white/5 border border-white/10' : i === 2 ? 'bg-[#ff6ec7]/5 border border-[#ff6ec7]/10' : 'bg-white/[0.02] hover:bg-white/[0.04]'}`}>
                           <div className="flex items-center gap-2 min-w-0">

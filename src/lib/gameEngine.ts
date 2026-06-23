@@ -296,12 +296,41 @@ export function updateGame(state: GameState) {
   state.camera.x = Math.max(0, Math.min(LEVEL_WIDTH - CANVAS_WIDTH, state.camera.x));
 
   state.backgroundOffset = state.camera.x * 0.3;
-  state.distance = Math.floor(player.x / 10);
+  const newDistance = Math.floor(player.x / 10);
+  // Distance-based scoring: every 100 pixels = 10 points
+  if (newDistance > state.distance) {
+    const distGained = newDistance - state.distance;
+    // Every 10 distance units = 100px
+    const distScore = Math.floor(distGained / 10) * 10;
+    if (distScore > 0) {
+      state.score += Math.floor(distScore * (abilityId === 'score_multiplier' ? 1.5 : 1));
+    }
+  }
+  state.distance = newDistance;
 
   // === Fall death ===
   if (player.y > CANVAS_HEIGHT + 150) {
     player.isAlive = false;
     state.phase = 'gameover';
+  }
+
+  // === Level completion check ===
+  // Check if player is on the last platform (end platform)
+  const endPlat = state.platforms[state.platforms.length - 1];
+  if (endPlat && player.onGround) {
+    const playerBottom = player.y + player.height;
+    if (
+      player.x + player.width > endPlat.x + 20 &&
+      player.x < endPlat.x + endPlat.width - 20 &&
+      Math.abs(playerBottom - endPlat.y) < 4
+    ) {
+      state.phase = 'levelcomplete';
+      state.levelCompleteTimer = 120; // 2 seconds at 60fps
+      // Bonus points for completing level
+      const levelBonus = state.level * 200;
+      state.score += Math.floor(levelBonus * (abilityId === 'score_multiplier' ? 1.5 : 1));
+      spawnParticles(state, player.x + player.width / 2, player.y, COLORS.neonYellow, 25, 6);
+    }
   }
 }
 
@@ -585,6 +614,59 @@ export function drawGame(ctx: CanvasRenderingContext2D, state: GameState, time: 
   }
   ctx.globalAlpha = 1;
 
+  // === Ability visual effects ===
+  if (player.isAlive) {
+    const px = player.x;
+    const py = player.y;
+    const pw = player.width;
+    const ph = player.height;
+    const pcx = px + pw / 2;
+    const pcy = py + ph / 2;
+
+    // Speed boost: speed lines behind player
+    if (abilityId === 'speed_boost' && Math.abs(player.vx) > 2) {
+      const lineDir = player.facing === 'left' ? 1 : -1;
+      for (let s = 0; s < 3; s++) {
+        const lineAlpha = 0.15 + Math.random() * 0.2;
+        ctx.strokeStyle = `rgba(255, 221, 0, ${lineAlpha})`;
+        ctx.lineWidth = 1.5;
+        const lineLen = 12 + Math.random() * 20;
+        const lineY = py + 8 + Math.random() * (ph - 16);
+        ctx.beginPath();
+        ctx.moveTo(pcx + lineDir * (pw / 2 + 5 + s * 8), lineY);
+        ctx.lineTo(pcx + lineDir * (pw / 2 + 5 + s * 8 + lineLen), lineY);
+        ctx.stroke();
+      }
+    }
+
+    // Low gravity: floating particles around player
+    if (abilityId === 'low_gravity') {
+      for (let p = 0; p < 2; p++) {
+        const pAngle = time / 800 + p * Math.PI;
+        const pDist = 20 + Math.sin(time / 600 + p * 2) * 8;
+        const particleX = pcx + Math.cos(pAngle) * pDist;
+        const particleY = pcy + Math.sin(pAngle) * pDist;
+        const pAlpha = 0.3 + 0.2 * Math.sin(time / 400 + p);
+        ctx.fillStyle = `rgba(180, 74, 255, ${pAlpha})`;
+        ctx.beginPath();
+        ctx.arc(particleX, particleY, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Coin magnet: magnetic field indicator
+    if (abilityId === 'coin_magnet') {
+      const magnetAlpha = 0.08 + 0.05 * Math.sin(time / 300);
+      ctx.strokeStyle = `rgba(246, 112, 25, ${magnetAlpha})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.arc(pcx, pcy, 80, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+
   ctx.restore();
 }
 
@@ -631,6 +713,31 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+// === LEVEL COMPLETE SCREEN ===
+export function drawLevelComplete(ctx: CanvasRenderingContext2D, state: GameState, time: number) {
+  ctx.fillStyle = 'rgba(10, 10, 30, 0.75)';
+  ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  ctx.textAlign = 'center';
+
+  ctx.shadowColor = COLORS.neonYellow;
+  ctx.shadowBlur = 25;
+  ctx.fillStyle = COLORS.neonYellow;
+  ctx.font = 'bold 36px monospace';
+  ctx.fillText('LEVEL ' + state.level + ' COMPLETE!', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 30);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+  ctx.font = '16px monospace';
+  ctx.fillText('Score: ' + state.score, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 10);
+
+  ctx.fillStyle = COLORS.neonGreen;
+  ctx.font = '14px monospace';
+  const dots = '.'.repeat(Math.floor(time / 300) % 4);
+  ctx.fillText('Next level loading' + dots, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 45);
+
+  ctx.textAlign = 'left';
+}
+
 // === HUD ===
 export function drawHUD(ctx: CanvasRenderingContext2D, state: GameState, walletAddress: string | null, balance: string) {
   ctx.fillStyle = COLORS.hud;
@@ -649,9 +756,22 @@ export function drawHUD(ctx: CanvasRenderingContext2D, state: GameState, walletA
   ctx.font = 'bold 20px monospace';
   ctx.fillText(state.score.toString().padStart(8, '0'), 22, 54);
 
+  // Score multiplier indicator
+  const char = getSelectedCharacterFromList(state, _currentCharacters);
+  if (char?.ability.id === 'score_multiplier') {
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 10px monospace';
+    ctx.fillText('x1.5', 120, 30);
+  }
+
   ctx.fillStyle = COLORS.neonBlue;
   ctx.font = '11px monospace';
-  ctx.fillText(`${state.distance}m`, 130, 30);
+  ctx.fillText(`${state.distance}m`, 130, 44);
+
+  // Level indicator
+  ctx.fillStyle = COLORS.neonGreen;
+  ctx.font = 'bold 11px monospace';
+  ctx.fillText(`LV ${state.level}`, 130, 60);
 
   ctx.fillStyle = COLORS.coin;
   ctx.beginPath();

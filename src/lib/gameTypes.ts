@@ -91,7 +91,7 @@ export interface GameAssets {
   ritualLogoImg: HTMLImageElement | null;
 }
 
-export type GamePhase = 'start' | 'select' | 'playing' | 'gameover';
+export type GamePhase = 'start' | 'select' | 'playing' | 'levelcomplete' | 'gameover';
 
 export interface GameState {
   player: Player;
@@ -114,6 +114,8 @@ export interface GameState {
   // Character
   selectedCharacterId: number;
   selectedCharacterImg: HTMLImageElement | null;
+  // Level complete
+  levelCompleteTimer: number;
 }
 
 export const GRAVITY = 0.55;
@@ -222,15 +224,21 @@ export function createInitialGameState(): GameState {
     lastBlockHash: '',
     selectedCharacterId: 0,
     selectedCharacterImg: null,
+    levelCompleteTimer: 0,
   };
 }
 
-export function resetGameForPlaying(state: GameState): void {
+export function resetGameForPlaying(state: GameState, preserveLevel: boolean = false): void {
   const stars = state.stars;
   const floatingArts = state.floatingArts;
   const onChainScoreSubmitted = state.onChainScoreSubmitted;
   const pendingSubmission = state.pendingSubmission;
   const lastBlockHash = state.lastBlockHash;
+  const currentLevel = state.level;
+  const currentScore = state.score;
+  const currentDistance = state.distance;
+  const selectedCharacterId = state.selectedCharacterId;
+  const selectedCharacterImg = state.selectedCharacterImg;
 
   Object.assign(state, createInitialGameState());
   state.stars = stars;
@@ -240,14 +248,36 @@ export function resetGameForPlaying(state: GameState): void {
   state.lastBlockHash = lastBlockHash;
   state.phase = 'playing';
 
+  if (preserveLevel) {
+    state.level = currentLevel + 1;
+    state.score = currentScore;
+    state.distance = currentDistance;
+    state.selectedCharacterId = selectedCharacterId;
+    state.selectedCharacterImg = selectedCharacterImg;
+  }
+
   generateLevel(state);
 }
 
 export function generateLevel(state: GameState): void {
-  const { platforms, coins, enemies } = state;
+  const { platforms, coins, enemies, level } = state;
   platforms.length = 0;
   coins.length = 0;
   enemies.length = 0;
+
+  // Difficulty scaling based on level
+  const difficulty = Math.min(level, 10);
+  const minGap = 70 + difficulty * 5;
+  const maxGap = 100 + difficulty * 15;
+  const minWidth = Math.max(60, 80 - difficulty * 3);
+  const maxWidth = Math.max(90, 130 - difficulty * 5);
+  const enemyChance = 0.25 + difficulty * 0.04;
+  const movingChance = 0.12 + difficulty * 0.02;
+  const fragileChance = 0.2 + difficulty * 0.02;
+  const bounceChance = 0.28;
+  const enemySpeedMult = 1 + difficulty * 0.12;
+  const movingSpeedMult = 1 + difficulty * 0.08;
+  const platformCount = 40 + Math.floor(difficulty * 2);
 
   // Ground platform at start - wide and safe
   platforms.push({
@@ -264,28 +294,28 @@ export function generateLevel(state: GameState): void {
   let lastY = CANVAS_HEIGHT - 50;
 
   // Generate procedural level
-  for (let i = 0; i < 50; i++) {
-    const gap = 70 + Math.random() * 100;
-    const width = 80 + Math.random() * 130;
+  for (let i = 0; i < platformCount; i++) {
+    const gap = minGap + Math.random() * (maxGap - minGap);
+    const width = minWidth + Math.random() * (maxWidth - minWidth);
     const yVariation = (Math.random() - 0.5) * 80;
     const x = lastX + gap;
     let y = Math.max(120, Math.min(CANVAS_HEIGHT - 80, lastY + yVariation));
 
-    // Platform types
+    // Platform types - difficulty increases special platform chances
     const typeRoll = Math.random();
     let type: Platform['type'] = 'normal';
     let platformColor = COLORS.platform;
     let glow = COLORS.platformBorder;
 
-    if (typeRoll < 0.12 && i > 5) {
+    if (typeRoll < movingChance && i > 5) {
       type = 'moving';
       platformColor = COLORS.movingPlatform;
       glow = COLORS.neonPurple;
-    } else if (typeRoll < 0.2 && i > 3) {
+    } else if (typeRoll < movingChance + fragileChance && i > 3) {
       type = 'fragile';
       platformColor = COLORS.fragilePlatform;
       glow = COLORS.neonPink;
-    } else if (typeRoll < 0.28) {
+    } else if (typeRoll < movingChance + fragileChance + bounceChance) {
       type = 'bounce';
       platformColor = COLORS.bouncePlatform;
       glow = COLORS.bounceBorder;
@@ -301,7 +331,7 @@ export function generateLevel(state: GameState): void {
       glowColor: glow,
       moveDir: 1,
       moveRange: type === 'moving' ? 40 + Math.random() * 30 : undefined,
-      moveSpeed: type === 'moving' ? 0.6 + Math.random() * 0.8 : undefined,
+      moveSpeed: type === 'moving' ? (0.6 + Math.random() * 0.8) * movingSpeedMult : undefined,
       originX: x,
       fragileTimer: type === 'fragile' ? 80 : undefined,
       bounceForce: type === 'bounce' ? -14 : undefined,
@@ -334,15 +364,15 @@ export function generateLevel(state: GameState): void {
       }
     }
 
-    // Enemies
-    if (Math.random() > 0.75 && i > 4 && width > 90) {
+    // Enemies - more frequent and faster at higher levels
+    if (Math.random() < enemyChance && i > 4 && width > 90) {
       const enemyType = Math.random() > 0.7 ? 'flyer' : 'walker';
       enemies.push({
         x: x + 25,
         y: enemyType === 'flyer' ? y - 55 : y - 32,
         width: 22,
         height: 22,
-        vx: 0.8 + Math.random() * 0.8,
+        vx: (0.8 + Math.random() * 0.8) * enemySpeedMult,
         moveRange: width - 40,
         originX: x + 25,
         isAlive: true,
@@ -356,7 +386,7 @@ export function generateLevel(state: GameState): void {
     lastY = y;
   }
 
-  // End platform - larger and easy to spot
+  // End platform - larger and easy to spot, with special neon yellow glow
   platforms.push({
     x: lastX + 120,
     y: CANVAS_HEIGHT - 80,
