@@ -24,13 +24,13 @@ import {
   drawGame,
   drawHUD,
   drawGameOver,
-  drawCharacterSelect,
   setActiveCharacters,
 } from '@/lib/gameEngine';
 import {
   getRandomCharacters,
   applyAbilityToState,
   RARITY_COLORS,
+  RARITY_LABELS,
   GameCharacter,
 } from '@/lib/characters';
 import { Wallet, Unplug, RotateCcw, Trophy, Zap, Crown, Medal, Star } from 'lucide-react';
@@ -50,6 +50,172 @@ interface ScoreEntry {
 
 const CHARACTER_COUNT = 10;
 
+// ==================== CHARACTER SELECT OVERLAY ====================
+function CharacterSelectOverlay({
+  characters,
+  selectedIndex,
+  onSelect,
+  onConfirm,
+}: {
+  characters: GameCharacter[];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+  onConfirm: () => void;
+}) {
+  const [loadedImgs, setLoadedImgs] = useState<Set<number>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const selected = characters[selectedIndex];
+
+  return (
+    <div
+      className="absolute inset-0 z-30 flex flex-col"
+      style={{
+        background: 'linear-gradient(180deg, #0a0a2e 0%, #0a0a1a 50%, #1a0a2e 100%)',
+        touchAction: 'none',
+      }}
+    >
+      {/* Header */}
+      <div className="text-center pt-4 pb-2 px-4 flex-shrink-0">
+        <h2
+          className="font-mono font-bold text-[#00ffaa] tracking-wider"
+          style={{ fontSize: 'clamp(16px, 4vw, 24px)', textShadow: '0 0 20px rgba(0,255,170,0.5)' }}
+        >
+          SELECT YOUR CHARACTER
+        </h2>
+        <p className="font-mono text-white/40 mt-1" style={{ fontSize: 'clamp(9px, 2vw, 11px)' }}>
+          Random names &amp; abilities each time! Pick wisely.
+        </p>
+      </div>
+
+      {/* Character Grid */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-2 py-1" style={{ WebkitOverflowScrolling: 'touch' }}>
+        <div
+          className="grid gap-2 mx-auto"
+          style={{
+            gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))',
+            maxWidth: 720,
+          }}
+        >
+          {characters.map((ch, i) => {
+            const isSelected = i === selectedIndex;
+            const rarityColor = RARITY_COLORS[ch.rarity];
+            return (
+              <button
+                key={ch.id}
+                onClick={() => onSelect(i)}
+                className="relative rounded-xl border-2 p-1.5 transition-all duration-150 text-left"
+                style={{
+                  background: isSelected ? 'rgba(0,255,170,0.1)' : 'rgba(20,20,50,0.8)',
+                  borderColor: isSelected ? '#00ffaa' : rarityColor + '40',
+                  boxShadow: isSelected ? '0 0 15px rgba(0,255,170,0.3), inset 0 0 15px rgba(0,255,170,0.05)' : 'none',
+                  touchAction: 'manipulation',
+                  WebkitTapHighlightColor: 'transparent',
+                }}
+              >
+                {/* Selection arrow */}
+                {isSelected && (
+                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-b-[7px] border-l-transparent border-r-transparent border-b-[#00ffaa]" />
+                )}
+
+                {/* Image */}
+                <div
+                  className="relative w-full rounded-lg overflow-hidden bg-white/5 flex items-center justify-center"
+                  style={{ aspectRatio: '1/1' }}
+                >
+                  <img
+                    src={ch.imageSrc}
+                    alt={ch.name}
+                    className="w-full h-full object-cover"
+                    loading="eager"
+                    onLoad={() => setLoadedImgs(prev => new Set([...prev, ch.id]))}
+                    style={{ opacity: loadedImgs.has(ch.id) ? 1 : 0.3 }}
+                  />
+                  {!loadedImgs.has(ch.id) && (
+                    <span className="absolute text-white/20 text-2xl font-mono">?</span>
+                  )}
+                </div>
+
+                {/* Rarity badge */}
+                <div
+                  className="mt-1.5 inline-block rounded px-1.5 py-0.5 font-mono font-bold"
+                  style={{ fontSize: '8px', color: rarityColor, backgroundColor: rarityColor + '20' }}
+                >
+                  {ch.rarity.toUpperCase()}
+                </div>
+
+                {/* Name */}
+                <p
+                  className="font-mono font-bold text-white truncate mt-0.5"
+                  style={{ fontSize: '10px', lineHeight: '14px' }}
+                >
+                  {ch.name.length > 13 ? ch.name.slice(0, 12) + '..' : ch.name}
+                </p>
+
+                {/* Ability */}
+                <p className="font-mono truncate" style={{ fontSize: '9px', color: ch.ability.color, lineHeight: '13px' }}>
+                  {ch.ability.icon} {ch.ability.name}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Selected ability detail */}
+      {selected && (
+        <div className="flex-shrink-0 px-4 pb-2">
+          <div
+            className="mx-auto rounded-lg border p-3 text-center max-w-lg"
+            style={{
+              background: 'rgba(20,20,50,0.85)',
+              borderColor: selected.ability.color + '60',
+            }}
+          >
+            <p className="font-mono font-bold" style={{ fontSize: '13px', color: selected.ability.color }}>
+              {selected.ability.icon} {selected.ability.name}
+            </p>
+            <p className="font-mono text-white/60 mt-0.5" style={{ fontSize: '11px' }}>
+              {selected.ability.description}
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Bottom buttons */}
+      <div className="flex-shrink-0 px-4 pb-4 pt-1">
+        <div className="flex items-center justify-center gap-3 max-w-lg mx-auto">
+          <button
+            onClick={() => onSelect((selectedIndex - 1 + characters.length) % characters.length)}
+            className="px-5 py-2.5 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm active:bg-[#00ffaa]/15 transition-colors"
+            style={{ touchAction: 'manipulation' }}
+          >
+            &larr; Prev
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-8 py-2.5 rounded-xl bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm active:bg-[#00ffaa]/90 transition-colors shadow-[0_0_15px_rgba(0,255,170,0.3)]"
+            style={{ touchAction: 'manipulation' }}
+          >
+            Confirm
+          </button>
+          <button
+            onClick={() => onSelect((selectedIndex + 1) % characters.length)}
+            className="px-5 py-2.5 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm active:bg-[#00ffaa]/15 transition-colors"
+            style={{ touchAction: 'manipulation' }}
+          >
+            Next &rarr;
+          </button>
+        </div>
+        <p className="text-center font-mono text-white/25 mt-2 hidden lg:block" style={{ fontSize: '10px' }}>
+          A/D or Arrow Keys to browse &middot; ENTER to confirm
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ==================== MAIN GAME COMPONENT ====================
 export default function RitualGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -61,7 +227,6 @@ export default function RitualGame() {
   const lastPhaseRef = useRef<GamePhase>('select');
   const charSelectIndexRef = useRef(0);
   const displayCharsRef = useRef<GameCharacter[]>(getRandomCharacters(CHARACTER_COUNT));
-  const charImgsRef = useRef<Map<number, HTMLImageElement>>(new Map());
   const lastSelectedCharRef = useRef<GameCharacter | null>(null);
 
   const [gamePhase, setGamePhase] = useState<GamePhase>('select');
@@ -71,10 +236,10 @@ export default function RitualGame() {
   const [displayScore, setDisplayScore] = useState(0);
   const [displayDistance, setDisplayDistance] = useState(0);
   const [displayCoins, setDisplayCoins] = useState(0);
-  const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [selectedCharName, setSelectedCharName] = useState('');
   const [selectedCharAbility, setSelectedCharAbility] = useState('');
   const [selectedCharRarity, setSelectedCharRarity] = useState('');
+  const [selectIndex, setSelectIndex] = useState(0);
 
   const walletRef = useRef({ address: '' as string | null, balance: '' as string, isConnected: false, isCorrectNetwork: false });
   const { wallet, connect, disconnect, switchToRitual } = useWallet();
@@ -87,29 +252,15 @@ export default function RitualGame() {
     } catch { return []; }
   });
 
-  // Preload images
+  // Preload art images
   useEffect(() => {
     const charImg = new Image();
     charImg.src = '/character-art.jpeg';
-    charImg.onload = () => { assetsRef.current.characterImg = charImg; setAssetsLoaded(true); };
-    charImg.onerror = () => setAssetsLoaded(true);
+    charImg.onload = () => { assetsRef.current.characterImg = charImg; };
 
     const logoImg = new Image();
     logoImg.src = '/ritual-logo-art.jpeg';
     logoImg.onload = () => { assetsRef.current.ritualLogoImg = logoImg; };
-
-    // Preload all character images
-    const preloadChars = () => {
-      displayCharsRef.current.forEach(ch => {
-        if (!charImgsRef.current.has(ch.id)) {
-          const img = new Image();
-          img.src = ch.imageSrc;
-          img.onload = () => { charImgsRef.current.set(ch.id, img); };
-          charImgsRef.current.set(ch.id, img);
-        }
-      });
-    };
-    preloadChars();
   }, []);
 
   const saveScore = useCallback((score: number, address: string, charName: string, charId: number, abilityName: string, rarity: string) => {
@@ -142,50 +293,66 @@ export default function RitualGame() {
     const selected = chars[idx];
     if (!selected) return;
 
-    const charImg = charImgsRef.current.get(selected.id) || null;
+    // Load the image
+    const img = new Image();
+    img.src = selected.imageSrc;
 
-    resetGameForPlaying(state);
-    state.selectedCharacterId = selected.id;
-    state.selectedCharacterImg = charImg;
-    applyAbilityToState(state, selected);
+    const startPlaying = () => {
+      resetGameForPlaying(state);
+      state.selectedCharacterId = selected.id;
+      state.selectedCharacterImg = img.complete ? img : null;
+      applyAbilityToState(state, selected);
+      setActiveCharacters(chars);
+      lastSelectedCharRef.current = selected;
+      setSelectedCharName(selected.name);
+      setSelectedCharAbility(selected.ability.name);
+      setSelectedCharRarity(selected.rarity);
+      setDisplayScore(0);
+      setDisplayDistance(0);
+      setDisplayCoins(0);
+      setChainSubmitted(false);
+      setChainPending(false);
+      setChainTxHash('');
+      setGamePhase('playing');
+    };
 
-    setActiveCharacters(chars);
-    lastSelectedCharRef.current = selected;
+    if (img.complete) {
+      startPlaying();
+    } else {
+      img.onload = () => {
+        state.selectedCharacterImg = img;
+        startPlaying();
+      };
+      img.onerror = () => startPlaying();
+      // Start playing immediately even if image not loaded yet
+      startPlaying();
+    }
+  }, []);
 
-    setSelectedCharName(selected.name);
-    setSelectedCharAbility(selected.ability.name);
-    setSelectedCharRarity(selected.rarity);
-    setDisplayScore(0);
-    setDisplayDistance(0);
-    setDisplayCoins(0);
-    setChainSubmitted(false);
-    setChainPending(false);
-    setChainTxHash('');
-    setGamePhase('playing');
+  const refreshCharacters = useCallback(() => {
+    const newChars = getRandomCharacters(CHARACTER_COUNT);
+    displayCharsRef.current = newChars;
+    charSelectIndexRef.current = 0;
+    setSelectIndex(0);
+    return newChars;
   }, []);
 
   const startGame = useCallback(() => {
     const state = gameStateRef.current;
     if (state.phase === 'playing') return;
-    const newChars = getRandomCharacters(CHARACTER_COUNT);
-    displayCharsRef.current = newChars;
-    charSelectIndexRef.current = 0;
-
-    // Preload new character images
-    newChars.forEach(ch => {
-      if (!charImgsRef.current.has(ch.id)) {
-        const img = new Image();
-        img.src = ch.imageSrc;
-        img.onload = () => { charImgsRef.current.set(ch.id, img); };
-        charImgsRef.current.set(ch.id, img);
-      }
-    });
-
+    const newChars = refreshCharacters();
+    setActiveCharacters(newChars);
     state.phase = 'select';
     setGamePhase('select');
+  }, [refreshCharacters]);
+
+  // Handle character selection from HTML overlay
+  const handleSelectChar = useCallback((index: number) => {
+    charSelectIndexRef.current = index;
+    setSelectIndex(index);
   }, []);
 
-  // Main game loop
+  // Main game loop (only runs during playing/gameover, not select)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -195,42 +362,14 @@ export default function RitualGame() {
     generateLevel(gameStateRef.current);
     cleanupRef.current = setupInputListeners();
 
-    let selectBrowseCooldown = 0;
-
     const loop = (timestamp: number) => {
       const state = gameStateRef.current;
       const w = walletRef.current;
-      const charCount = displayCharsRef.current.length;
 
-      if (state.phase === 'select') {
-        if (selectBrowseCooldown > 0) selectBrowseCooldown--;
-        if (selectBrowseCooldown === 0) {
-          if (wasJustPressed('ArrowLeft') || wasJustPressed('KeyA')) {
-            charSelectIndexRef.current = (charSelectIndexRef.current - 1 + charCount) % charCount;
-            selectBrowseCooldown = 8;
-          }
-          if (wasJustPressed('ArrowRight') || wasJustPressed('KeyD')) {
-            charSelectIndexRef.current = (charSelectIndexRef.current + 1) % charCount;
-            selectBrowseCooldown = 8;
-          }
-        }
+      // Only handle gameover input in canvas loop
+      if (state.phase === 'gameover') {
         if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          confirmCharacterAndStart();
-        }
-      } else if (state.phase === 'gameover') {
-        if (wasJustPressed('Enter') || wasJustPressed('Space')) {
-          const newChars = getRandomCharacters(CHARACTER_COUNT);
-          displayCharsRef.current = newChars;
-          charSelectIndexRef.current = 0;
-          newChars.forEach(ch => {
-            if (!charImgsRef.current.has(ch.id)) {
-              const img = new Image();
-              img.src = ch.imageSrc;
-              img.onload = () => { charImgsRef.current.set(ch.id, img); };
-              charImgsRef.current.set(ch.id, img);
-            }
-          });
-          // Reset state but go to select (not playing)
+          const newChars = refreshCharacters();
           const { stars, floatingArts, onChainScoreSubmitted, pendingSubmission, lastBlockHash } = state;
           Object.assign(state, createInitialGameState());
           state.stars = stars;
@@ -265,25 +404,23 @@ export default function RitualGame() {
           const ch = displayCharsRef.current.find(c => c.id === charId);
           saveScore(state.score, w.address || '', ch?.name || 'Unknown', charId, ch?.ability.name || '', ch?.rarity || 'common');
         }
-        if (state.phase === 'select' && lastPhaseRef.current !== 'select') {
-          setGamePhase('select');
-        }
         lastPhaseRef.current = state.phase;
       }
 
-      // Draw
+      // Draw canvas
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       const assets = assetsRef.current;
 
-      if (state.phase === 'select') {
-        drawGame(ctx, state, timestamp, assets);
-        drawCharacterSelect(ctx, timestamp, displayCharsRef.current, charImgsRef.current, charSelectIndexRef.current);
- } else if (state.phase === 'playing') {
+      if (state.phase === 'playing') {
         drawGame(ctx, state, timestamp, assets);
         drawHUD(ctx, state, w.address, w.balance);
       } else if (state.phase === 'gameover') {
         drawGame(ctx, state, timestamp, assets);
         drawGameOver(ctx, state, timestamp, w.address);
+      } else {
+        // select phase: draw a dark background on canvas
+        ctx.fillStyle = '#0a0a1a';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
       }
 
       animFrameRef.current = requestAnimationFrame(loop);
@@ -292,28 +429,7 @@ export default function RitualGame() {
     animFrameRef.current = requestAnimationFrame(loop);
     return () => { cancelAnimationFrame(animFrameRef.current); cleanupRef.current?.(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [confirmCharacterAndStart, submitScoreOnChain, saveScore]);
-
-  // Mobile: handle character select with swipe-like buttons
-  const mobileSelectLeft = () => {
-    if (gameStateRef.current.phase === 'select') {
-      const count = displayCharsRef.current.length;
-      charSelectIndexRef.current = (charSelectIndexRef.current - 1 + count) % count;
-    }
-  };
-  const mobileSelectRight = () => {
-    if (gameStateRef.current.phase === 'select') {
-      const count = displayCharsRef.current.length;
-      charSelectIndexRef.current = (charSelectIndexRef.current + 1) % count;
-    }
-  };
-  const mobileConfirm = () => {
-    if (gameStateRef.current.phase === 'select') {
-      confirmCharacterAndStart();
-    } else if (gameStateRef.current.phase === 'gameover') {
-      startGame();
-    }
-  };
+  }, [confirmCharacterAndStart, submitScoreOnChain, saveScore, refreshCharacters]);
 
   const getRankIcon = (i: number) => {
     if (i === 0) return <Crown className="w-3 h-3 text-[#ffd700]" />;
@@ -324,8 +440,7 @@ export default function RitualGame() {
 
   const getCharImgSrc = (entry: ScoreEntry) => {
     if (entry.characterId > 0) {
-      const chars = displayCharsRef.current;
-      const ch = chars.find(c => c.id === entry.characterId);
+      const ch = displayCharsRef.current.find(c => c.id === entry.characterId);
       if (ch) return ch.imageSrc;
     }
     return '/characters/char1.jpg';
@@ -375,183 +490,188 @@ export default function RitualGame() {
 
       <main className="relative z-10 flex-1 w-full max-w-6xl mx-auto px-4 py-3 flex flex-col lg:flex-row gap-4">
         <div ref={containerRef} className="flex-1 flex flex-col items-center">
-          {/* Stats bar */}
-          <div className="w-full flex items-center justify-between mb-2 px-1">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1.5">
-                <Trophy className="w-4 h-4 text-[#ffd700]" />
-                <span className="text-[#ffd700] font-mono text-sm font-bold">{displayScore.toLocaleString()}</span>
+          {/* Stats bar (only during playing/gameover) */}
+          {(gamePhase === 'playing' || gamePhase === 'gameover') && (
+            <div className="w-full flex items-center justify-between mb-2 px-1">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-1.5">
+                  <Trophy className="w-4 h-4 text-[#ffd700]" />
+                  <span className="text-[#ffd700] font-mono text-sm font-bold">{displayScore.toLocaleString()}</span>
+                </div>
+                <div className="text-white/40 font-mono text-xs">
+                  <span className="text-[#00e5ff]">{displayDistance}m</span> · <span className="text-[#ffd700]">{displayCoins} coins</span>
+                </div>
               </div>
-              <div className="text-white/40 font-mono text-xs">
-                <span className="text-[#00e5ff]">{displayDistance}m</span> · <span className="text-[#ffd700]">{displayCoins} coins</span>
-              </div>
-            </div>
-            {selectedCharName && gamePhase === 'playing' && (
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[#00ffaa]/70 border-[#00ffaa]/20 bg-[#00ffaa]/5 font-mono text-[10px]">
-                  {selectedCharName}
-                </Badge>
-                {selectedCharAbility && (
-                  <Badge variant="outline" className="text-white/40 border-white/10 bg-white/5 font-mono text-[9px]">
-                    {selectedCharAbility}
+              {selectedCharName && (
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="text-[#00ffaa]/70 border-[#00ffaa]/20 bg-[#00ffaa]/5 font-mono text-[10px]">
+                    {selectedCharName}
                   </Badge>
-                )}
-              </div>
+                  {selectedCharAbility && (
+                    <Badge variant="outline" className="text-white/40 border-white/10 bg-white/5 font-mono text-[9px]">
+                      {selectedCharAbility}
+                    </Badge>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Canvas + Character Select Overlay */}
+          <div className="relative rounded-xl overflow-hidden border border-[#00ffaa]/20 shadow-[0_0_30px_rgba(0,255,170,0.1)] w-full" style={{ touchAction: 'none', maxWidth: 800 }}>
+            <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="block w-full h-auto" style={{ touchAction: 'none' }} />
+
+            {/* HTML Character Select Overlay */}
+            {gamePhase === 'select' && (
+              <CharacterSelectOverlay
+                characters={displayCharsRef.current}
+                selectedIndex={selectIndex}
+                onSelect={handleSelectChar}
+                onConfirm={confirmCharacterAndStart}
+              />
             )}
           </div>
 
-          {/* Canvas */}
-          <div className="relative rounded-xl overflow-hidden border border-[#00ffaa]/20 shadow-[0_0_30px_rgba(0,255,170,0.1)]" style={{ touchAction: 'none' }}>
-            <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} className="block w-full max-w-[800px] h-auto cursor-default" style={{ touchAction: 'none' }} />
-          </div>
-
-          {/* Mobile controls */}
-          <div className="w-full flex justify-center mt-3 lg:hidden" style={{ touchAction: 'none' }}>
-            <div className="flex items-center gap-4">
-              <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowLeft'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&larr;</button>
-              <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowUp'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-[#00ffaa]/15 border border-[#00ffaa]/40 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/30 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>JUMP</button>
-              <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowRight'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&rarr;</button>
-            </div>
-          </div>
-
-          {/* Mobile select/confirm for character select screen */}
-          {gamePhase === 'select' && (
-            <div className="w-full flex justify-center mt-3 lg:hidden gap-3" style={{ touchAction: 'none' }}>
-              <button onTouchStart={(e) => { e.preventDefault(); mobileSelectLeft(); }} className="px-5 py-3 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm select-none active:bg-[#00ffaa]/15" style={{ touchAction: 'none' }}>&larr; Prev</button>
-              <button onTouchStart={(e) => { e.preventDefault(); mobileConfirm(); }} className="px-7 py-3 rounded-xl bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm select-none active:bg-[#00ffaa]/90" style={{ touchAction: 'none' }}>Confirm</button>
-              <button onTouchStart={(e) => { e.preventDefault(); mobileSelectRight(); }} className="px-5 py-3 rounded-xl bg-white/10 border border-[#00ffaa]/20 text-[#00ffaa] font-mono text-sm select-none active:bg-[#00ffaa]/15" style={{ touchAction: 'none' }}>Next &rarr;</button>
+          {/* Mobile game controls (only during playing) */}
+          {gamePhase === 'playing' && (
+            <div className="w-full flex justify-center mt-3 lg:hidden" style={{ touchAction: 'none' }}>
+              <div className="flex items-center gap-4">
+                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowLeft'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowLeft'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&larr;</button>
+                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowUp'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowUp'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-[#00ffaa]/15 border border-[#00ffaa]/40 flex items-center justify-center text-[#00ffaa] font-mono text-sm font-bold active:bg-[#00ffaa]/30 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>JUMP</button>
+                <button data-game-control="true" onTouchStart={(e) => { e.preventDefault(); simulateKeyDown('ArrowRight'); }} onTouchEnd={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onTouchCancel={(e) => { e.preventDefault(); simulateKeyUp('ArrowRight'); }} onContextMenu={(e) => e.preventDefault()} className="w-16 h-16 rounded-xl bg-white/10 border border-[#00ffaa]/30 flex items-center justify-center text-[#00ffaa] font-mono text-2xl active:bg-[#00ffaa]/25 select-none" style={{ touchAction: 'none', WebkitTouchCallout: 'none', userSelect: 'none' }}>&rarr;</button>
+              </div>
             </div>
           )}
 
           {/* Mobile restart (gameover only) */}
           {gamePhase === 'gameover' && (
             <button onClick={startGame} className="mt-3 px-6 py-2 bg-[#00ffaa] text-[#0a0a1a] font-mono font-bold text-sm rounded-lg hover:bg-[#00ffaa]/90 transition-colors shadow-[0_0_15px_rgba(0,255,170,0.3)] lg:hidden">
-              {gamePhase === 'gameover' ? 'Play Again' : 'Start Game'}
+              Play Again
             </button>
           )}
         </div>
 
-        {/* Sidebar */}
-        <div className="w-full lg:w-80 flex flex-col gap-3">
-          {/* Selected Character Info (during playing/gameover) */}
-          {(gamePhase === 'playing' || gamePhase === 'gameover') && lastSelectedCharRef.current && (
-            <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
-              <CardHeader className="pb-2 pt-3 px-4">
-                <CardTitle className="text-xs font-mono text-[#00ffaa] flex items-center gap-2">
-                  <Star className="w-3 h-3" />Active Character
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-3">
-                <div className="flex items-center gap-3">
-                  {lastSelectedCharRef.current && (
+        {/* Sidebar (hidden during character select on mobile) */}
+        {gamePhase !== 'select' && (
+          <div className="w-full lg:w-80 flex flex-col gap-3">
+            {/* Active Character Info */}
+            {(gamePhase === 'playing' || gamePhase === 'gameover') && lastSelectedCharRef.current && (
+              <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
+                <CardHeader className="pb-2 pt-3 px-4">
+                  <CardTitle className="text-xs font-mono text-[#00ffaa] flex items-center gap-2">
+                    <Star className="w-3 h-3" />Active Character
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="px-4 pb-3">
+                  <div className="flex items-center gap-3">
                     <div className="w-12 h-12 rounded-lg overflow-hidden border border-white/10 flex-shrink-0">
                       <img src={lastSelectedCharRef.current.imageSrc} alt="" className="w-full h-full object-cover" />
                     </div>
-                  )}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm font-bold text-white truncate">{selectedCharName}</span>
-                      <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono" style={{ borderColor: RARITY_COLORS[selectedCharRarity as keyof typeof RARITY_COLORS] + '60', color: RARITY_COLORS[selectedCharRarity as keyof typeof RARITY_COLORS] }}>
-                        {selectedCharRarity?.toUpperCase()}
-                      </Badge>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-sm font-bold text-white truncate">{selectedCharName}</span>
+                        <Badge variant="outline" className="text-[9px] px-1.5 py-0 font-mono" style={{ borderColor: RARITY_COLORS[selectedCharRarity as keyof typeof RARITY_COLORS] + '60', color: RARITY_COLORS[selectedCharRarity as keyof typeof RARITY_COLORS] }}>
+                          {selectedCharRarity?.toUpperCase()}
+                        </Badge>
+                      </div>
+                      {selectedCharAbility && (
+                        <div className="font-mono text-[10px] text-white/40 mt-0.5">{selectedCharAbility}</div>
+                      )}
                     </div>
-                    {selectedCharAbility && (
-                      <div className="font-mono text-[10px] text-white/40 mt-0.5">{selectedCharAbility}</div>
-                    )}
                   </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Leaderboard */}
+            <Card className="bg-[#0f0f2f] border-[#00ffaa]/15 flex-1">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-xs font-mono text-[#ffd700] flex items-center gap-2">
+                  <Trophy className="w-3 h-3" />Ranking Leaderboard
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <ScrollArea className="max-h-[340px]">
+                  {highScores.length === 0 ? (
+                    <p className="text-white/30 font-mono text-xs text-center py-6">No scores yet! Be the first.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {highScores.map((entry, i) => (
+                        <div key={`${entry.time}-${i}`} className={`flex items-center justify-between py-1.5 px-2 rounded-lg transition-colors ${i === 0 ? 'bg-[#ffd700]/10 border border-[#ffd700]/20' : i === 1 ? 'bg-white/5 border border-white/10' : i === 2 ? 'bg-[#ff6ec7]/5 border border-[#ff6ec7]/10' : 'bg-white/[0.02] hover:bg-white/[0.04]'}`}>
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="flex-shrink-0 w-4 flex justify-center">{getRankIcon(i)}</div>
+                            <img
+                              src={getCharImgSrc(entry)}
+                              alt=""
+                              className="w-6 h-6 rounded flex-shrink-0 object-cover border border-white/10"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                            />
+                            <div className="min-w-0">
+                              <div className="font-mono text-[10px] text-white/70 truncate font-bold">{entry.characterName}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-[8px] text-white/25 truncate max-w-[80px]">{entry.address.slice(0, 6)}...{entry.address.slice(-4)}</span>
+                                {entry.rarity && (
+                                  <span className="font-mono text-[7px] px-1 rounded" style={{ color: RARITY_COLORS[entry.rarity as keyof typeof RARITY_COLORS] || '#00ffaa', backgroundColor: (RARITY_COLORS[entry.rarity as keyof typeof RARITY_COLORS] || '#00ffaa') + '15' }}>
+                                    {entry.rarity}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex flex-col items-end flex-shrink-0">
+                            <span className="font-mono text-xs font-bold text-[#ffd700]">{entry.score.toLocaleString()}</span>
+                            {entry.abilityName && (
+                              <span className="font-mono text-[8px] text-white/25">{entry.abilityName}</span>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            {/* Network Info */}
+            <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
+              <CardHeader className="pb-2 pt-3 px-4">
+                <CardTitle className="text-xs font-mono text-[#00ffaa] flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#00ffaa] animate-pulse" />Ritual Testnet
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-3">
+                <div className="space-y-2 font-mono text-xs">
+                  <div className="flex justify-between"><span className="text-white/40">Chain ID</span><span className="text-white/70">1117</span></div>
+                  <div className="flex justify-between"><span className="text-white/40">Status</span><span className={wallet.isConnected && wallet.isCorrectNetwork ? 'text-[#00ffaa]' : 'text-[#ff3366]'}>{wallet.isConnected && wallet.isCorrectNetwork ? 'Connected' : 'Not Connected'}</span></div>
                 </div>
               </CardContent>
             </Card>
-          )}
 
-          {/* Leaderboard */}
-          <Card className="bg-[#0f0f2f] border-[#00ffaa]/15 flex-1">
-            <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="text-xs font-mono text-[#ffd700] flex items-center gap-2">
-                <Trophy className="w-3 h-3" />Ranking Leaderboard
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <ScrollArea className="max-h-[340px]">
-                {highScores.length === 0 ? (
-                  <p className="text-white/30 font-mono text-xs text-center py-6">No scores yet! Be the first.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {highScores.map((entry, i) => (
-                      <div key={`${entry.time}-${i}`} className={`flex items-center justify-between py-1.5 px-2 rounded-lg transition-colors ${i === 0 ? 'bg-[#ffd700]/10 border border-[#ffd700]/20' : i === 1 ? 'bg-white/5 border border-white/10' : i === 2 ? 'bg-[#ff6ec7]/5 border border-[#ff6ec7]/10' : 'bg-white/[0.02] hover:bg-white/[0.04]'}`}>
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="flex-shrink-0 w-4 flex justify-center">{getRankIcon(i)}</div>
-                          <img
-                            src={getCharImgSrc(entry)}
-                            alt=""
-                            className="w-6 h-6 rounded flex-shrink-0 object-cover border border-white/10"
-                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                          />
-                          <div className="min-w-0">
-                            <div className="font-mono text-[10px] text-white/70 truncate font-bold">{entry.characterName}</div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-mono text-[8px] text-white/25 truncate max-w-[80px]">{entry.address.slice(0, 6)}...{entry.address.slice(-4)}</span>
-                              {entry.rarity && (
-                                <span className="font-mono text-[7px] px-1 rounded" style={{ color: RARITY_COLORS[entry.rarity as keyof typeof RARITY_COLORS] || '#00ffaa', backgroundColor: (RARITY_COLORS[entry.rarity as keyof typeof RARITY_COLORS] || '#00ffaa') + '15' }}>
-                                  {entry.rarity}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end flex-shrink-0">
-                          <span className="font-mono text-xs font-bold text-[#ffd700]">{entry.score.toLocaleString()}</span>
-                          {entry.abilityName && (
-                            <span className="font-mono text-[8px] text-white/25">{entry.abilityName}</span>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
-            </CardContent>
-          </Card>
+            {/* On-chain submit */}
+            {gamePhase === 'gameover' && wallet.isConnected && wallet.isCorrectNetwork && (
+              <Card className="bg-[#0f0f2f] border-[#ffd700]/20">
+                <CardContent className="p-4">
+                  {chainSubmitted ? (
+                    <div className="text-center">
+                      <Badge className="bg-[#00ffaa]/20 text-[#00ffaa] border-[#00ffaa]/30 font-mono text-xs">Score On-Chain</Badge>
+                      {chainTxHash && <p className="text-white/30 font-mono text-[10px] mt-2 truncate">Tx: {chainTxHash}</p>}
+                    </div>
+                  ) : (
+                    <Button className="w-full bg-[#ffd700] text-[#0a0a1a] hover:bg-[#ffd700]/90 font-mono font-bold text-xs" onClick={submitScoreOnChain} disabled={chainPending}>
+                      <Zap className="w-3 h-3 mr-1.5" />{chainPending ? 'Submitting...' : 'Submit Score On-Chain'}
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
-          {/* Network Info */}
-          <Card className="bg-[#0f0f2f] border-[#00ffaa]/15">
-            <CardHeader className="pb-2 pt-3 px-4">
-              <CardTitle className="text-xs font-mono text-[#00ffaa] flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#00ffaa] animate-pulse" />Ritual Testnet
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="px-4 pb-3">
-              <div className="space-y-2 font-mono text-xs">
-                <div className="flex justify-between"><span className="text-white/40">Chain ID</span><span className="text-white/70">1117</span></div>
-                <div className="flex justify-between"><span className="text-white/40">Status</span><span className={wallet.isConnected && wallet.isCorrectNetwork ? 'text-[#00ffaa]' : 'text-[#ff3366]'}>{wallet.isConnected && wallet.isCorrectNetwork ? 'Connected' : 'Not Connected'}</span></div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* On-chain submit */}
-          {gamePhase === 'gameover' && wallet.isConnected && wallet.isCorrectNetwork && (
-            <Card className="bg-[#0f0f2f] border-[#ffd700]/20">
-              <CardContent className="p-4">
-                {chainSubmitted ? (
-                  <div className="text-center">
-                    <Badge className="bg-[#00ffaa]/20 text-[#00ffaa] border-[#00ffaa]/30 font-mono text-xs">Score On-Chain</Badge>
-                    {chainTxHash && <p className="text-white/30 font-mono text-[10px] mt-2 truncate">Tx: {chainTxHash}</p>}
-                  </div>
-                ) : (
-                  <Button className="w-full bg-[#ffd700] text-[#0a0a1a] hover:bg-[#ffd700]/90 font-mono font-bold text-xs" onClick={submitScoreOnChain} disabled={chainPending}>
-                    <Zap className="w-3 h-3 mr-1.5" />{chainPending ? 'Submitting...' : 'Submit Score On-Chain'}
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          )}
-
-          {gamePhase === 'gameover' && (
-            <Button variant="outline" className="w-full border-[#00ffaa]/20 text-[#00ffaa] hover:bg-[#00ffaa]/10 font-mono text-xs" onClick={startGame}>
-              <RotateCcw className="w-3 h-3 mr-1.5" />Play Again
-            </Button>
-          )}
-        </div>
+            {gamePhase === 'gameover' && (
+              <Button variant="outline" className="w-full border-[#00ffaa]/20 text-[#00ffaa] hover:bg-[#00ffaa]/10 font-mono text-xs" onClick={startGame}>
+                <RotateCcw className="w-3 h-3 mr-1.5" />Play Again
+              </Button>
+            )}
+          </div>
+        )}
       </main>
 
       <footer className="relative z-10 w-full max-w-6xl mx-auto px-4 py-3 flex items-center justify-center text-white/20 font-mono text-xs">
